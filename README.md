@@ -28,7 +28,7 @@ flowchart LR
 
 ## 调试 APK
 
-推送到 `main` 后，GitHub Actions 会编译一个 **debug APK**。打开 [Actions](https://github.com/Armstrong2015/floatap/actions)，进入最新的 Build APK，下载附件 `floatap-debug`。
+推送到 `main` 后，GitHub Actions 会编译一个 **debug APK**。包不在仓库文件列表里，也不在 Releases。打开 [Actions](https://github.com/Armstrong2015/floatap/actions)，点进最新一次成功的 **Build APK**，页面最下方 **Artifacts** 里下载 `floatap-debug`。第一次运行失败了，没有打出包；修好流水线后的下一次成功运行才会出现这个附件。
 
 这是调试签名，用来装到自己的手机上看选点、间隔和停止。它不是应用商店的上架包。手机需要允许安装未知来源应用。如果提示签名不一致，先卸掉旧版本再装。
 
