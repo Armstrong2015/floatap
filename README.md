@@ -5,11 +5,12 @@
 在自己的安卓手机上，悬浮选定位置，按间隔、定时或顺序把点击做完。
 
 [![平台](https://img.shields.io/badge/平台-Android_8.0+-3DDC84?style=flat-square&logo=android&logoColor=white)](docs/03-产品设计开发文档.md)
-[![阶段](https://img.shields.io/badge/阶段-M0_文档-1f6feb?style=flat-square)](docs/01-应用蓝皮书.md)
+[![阶段](https://img.shields.io/badge/阶段-M1_开发中-1f6feb?style=flat-square)](android)
+[![APK](https://img.shields.io/github/actions/workflow/status/Armstrong2015/floatap/build-apk.yml?style=flat-square&label=APK)](https://github.com/Armstrong2015/floatap/actions)
 [![桌面端](https://img.shields.io/badge/桌面端-Windows_后置-8b949e?style=flat-square&logo=windows&logoColor=white)](docs/01-应用蓝皮书.md#11-路线图)
 [![网络](https://img.shields.io/badge/网络-首期不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
 
-本仓库目前是产品与设计文档，还没有应用代码。
+安卓工程在 [`android`](android)。M1 是单点连点：选点、固定间隔、持续一段时间后停止。
 
 </div>
 
@@ -25,6 +26,12 @@ flowchart LR
 
 点的位置由人指定。浮序不登录账号、不填写支付信息、不替用户下单。
 
+## 调试 APK
+
+推送到 `main` 后，GitHub Actions 会编译一个 **debug APK**。打开 [Actions](https://github.com/Armstrong2015/floatap/actions)，进入最新的 Build APK，下载附件 `floatap-debug`。
+
+这是调试签名，用来装到自己的手机上看选点、间隔和停止。它不是应用商店的上架包。手机需要允许安装未知来源应用。如果提示签名不一致，先卸掉旧版本再装。
+
 ## 文档
 
 | | 文档 | 看什么 |
@@ -32,6 +39,7 @@ flowchart LR
 | 01 | [应用蓝皮书](docs/01-应用蓝皮书.md) | 定位、场景、边界、路线图 |
 | 02 | [产品需求分析](docs/02-产品需求分析.md) | 用户故事、功能编号、验收标准 |
 | 03 | [产品设计开发文档](docs/03-产品设计开发文档.md) | 架构、状态机、脚本格式、里程碑 |
+| 04 | [测试报告](docs/04-测试报告.md) | M1 编译、单元测试和调度模拟 |
 
 ## 一次作业怎么跑
 

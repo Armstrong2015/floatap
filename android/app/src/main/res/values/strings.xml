@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">浮序</string>
+    <string name="a11y_desc">浮序用这项权限在你标定的位置上点击。它不读取其他应用里的文字。</string>
+    <string name="boundary">浮序只在你已经授权的这台手机上，按你亲手标出的位置点击。请自行遵守应用商店、游戏和票务平台的规则，以及当地法律。\n\n浮序不会读取账号或支付信息，不会注入其他应用，也不会隐藏自己。</string>
+</resources>
