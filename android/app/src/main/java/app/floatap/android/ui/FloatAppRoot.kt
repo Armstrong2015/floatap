@@ -6,7 +6,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 
 @Composable
-fun FloatAppRoot(startOnGuide: Boolean, onLeaveToTarget: () -> Unit) {
+fun FloatAppRoot(startOnGuide: Boolean) {
     val nav = rememberNavController()
     NavHost(navController = nav, startDestination = if (startOnGuide) "guide" else "home") {
         composable("guide") {
@@ -23,7 +23,7 @@ fun FloatAppRoot(startOnGuide: Boolean, onLeaveToTarget: () -> Unit) {
         }
         composable("edit/{id}") { entry ->
             val id = entry.arguments?.getString("id")?.toLongOrNull() ?: 0L
-            EditScreen(jobId = id, onBack = { nav.popBackStack() }, onLeaveToTarget = onLeaveToTarget)
+            EditScreen(jobId = id, onBack = { nav.popBackStack() })
         }
         composable("settings") {
             SettingsScreen(onBack = { nav.popBackStack() })

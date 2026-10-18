@@ -8,7 +8,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
+import android.os.Build
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -27,6 +27,7 @@ class ScreenOverlay(private val context: Context) {
     var onResume: () -> Unit = {}
     var onStop: () -> Unit = {}
     var onOpenApp: () -> Unit = {}
+    var onPickRequest: () -> Unit = {}
     var onPick: (x: Int, y: Int) -> Unit = { _, _ -> }
     var onCancelPick: () -> Unit = {}
 
@@ -91,10 +92,7 @@ class ScreenOverlay(private val context: Context) {
             textSize = 16f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val cancel = Button(context).apply {
-            text = "取消"
-            setOnClickListener { onCancelPick() }
-        }
+        val cancel = chip("取消") { onCancelPick() }
         bar.addView(label)
         bar.addView(cancel)
         root.addView(bar, FrameLayout.LayoutParams(
@@ -191,6 +189,7 @@ class ScreenOverlay(private val context: Context) {
                 row.addButton("停止") { hideMenu(); onStop() }
             }
             RunPhase.IDLE -> {
+                row.addButton("选点") { hideMenu(); onPickRequest() }
                 row.addButton("开始") { hideMenu(); onStart() }
                 row.addButton("打开") { hideMenu(); onOpenApp() }
             }
@@ -206,11 +205,19 @@ class ScreenOverlay(private val context: Context) {
         menu = row
     }
 
-    private fun LinearLayout.addButton(label: String, click: () -> Unit) {
-        addView(Button(context).apply {
+    private fun chip(label: String, click: () -> Unit): TextView {
+        return TextView(context).apply {
             text = label
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 16f
+            setPadding(32, 20, 32, 20)
+            isClickable = true
             setOnClickListener { click() }
-        })
+        }
+    }
+
+    private fun LinearLayout.addButton(label: String, click: () -> Unit) {
+        addView(chip(label, click))
     }
 
     private fun circle(color: String): GradientDrawable {
@@ -225,8 +232,14 @@ class ScreenOverlay(private val context: Context) {
             width,
             height,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
-        )
+        ).also { params ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                params.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
     }
 }

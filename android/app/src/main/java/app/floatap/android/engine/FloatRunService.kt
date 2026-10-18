@@ -44,14 +44,23 @@ class FloatRunService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_PICK -> beginPick()
-            ACTION_START -> beginRun(intent.getLongExtra(EXTRA_JOB_ID, 0L))
-            ACTION_PAUSE -> pauseInternal()
-            ACTION_RESUME -> resumeInternal()
-            ACTION_STOP -> stopRun(StopReason.USER)
-            ACTION_SHOW_BALL -> showBall()
-            else -> Unit
+        try {
+            when (intent?.action) {
+                ACTION_PICK -> beginPick()
+                ACTION_START -> beginRun(intent.getLongExtra(EXTRA_JOB_ID, 0L))
+                ACTION_PAUSE -> pauseInternal()
+                ACTION_RESUME -> resumeInternal()
+                ACTION_STOP -> stopRun(StopReason.USER)
+                ACTION_SHOW_BALL -> {
+                    promote("点屏幕边缘的圆点，可以选点或停止")
+                    showBall()
+                }
+                else -> Unit
+            }
+        } catch (error: Exception) {
+            android.util.Log.e(TAG, "service action failed", error)
+            RunBus.message.value = "悬浮层没有打开：${error.javaClass.simpleName}"
+            runCatching { promote("浮序仍在运行") }
         }
         return START_NOT_STICKY
     }
@@ -71,24 +80,27 @@ class FloatRunService : Service() {
     }
 
     private fun beginPick() {
-        promote("点按要记录的位置")
-        val windows = windows()
-        windows.showBall(RunBus.phase.value)
-        windows.onPick = { x, y ->
-            val display = readDisplay()
-            PickerBus.pending = app.floatap.android.overlay.PickResult(
-                x, y, display.width, display.height, display.rotation,
-            )
-            windows.hidePicker()
-            if (RunBus.phase.value == RunPhase.IDLE) demote()
-            openApp()
+        try {
+            promote("点按要记录的位置")
+            val windows = windows()
+            windows.showBall(RunBus.phase.value)
+            windows.onPick = { x, y ->
+                val display = readDisplay()
+                PickerBus.pending = app.floatap.android.overlay.PickResult(
+                    x, y, display.width, display.height, display.rotation,
+                )
+                windows.hidePicker()
+                openApp()
+            }
+            windows.onCancelPick = {
+                windows.hidePicker()
+                openApp()
+            }
+            windows.showPicker()
+        } catch (error: Exception) {
+            android.util.Log.e(TAG, "picker failed", error)
+            RunBus.message.value = "选点层没有打开：${error.javaClass.simpleName}"
         }
-        windows.onCancelPick = {
-            windows.hidePicker()
-            if (RunBus.phase.value == RunPhase.IDLE) demote()
-            openApp()
-        }
-        windows.showPicker()
     }
 
     private fun beginRun(jobId: Long) {
@@ -266,6 +278,7 @@ class FloatRunService : Service() {
             created.onResume = { resumeInternal() }
             created.onStop = { stopRun(StopReason.USER) }
             created.onOpenApp = { openApp() }
+            created.onPickRequest = { beginPick() }
             overlay = created
         }
     }
@@ -280,9 +293,14 @@ class FloatRunService : Service() {
     private fun promote(text: String) {
         ensureChannel()
         val notification = buildNotification(text)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (typed: Exception) {
+            android.util.Log.w(TAG, "typed foreground start failed", typed)
             startForeground(NOTIFICATION_ID, notification)
         }
         windows()
@@ -351,6 +369,7 @@ class FloatRunService : Service() {
         private const val ACTION_PICK = "app.floatap.android.PICK"
         private const val ACTION_SHOW_BALL = "app.floatap.android.BALL"
         private const val EXTRA_JOB_ID = "job_id"
+        private const val TAG = "Floatap"
 
         fun startJob(context: Context, jobId: Long) {
             val intent = Intent(context, FloatRunService::class.java)
@@ -370,7 +389,7 @@ class FloatRunService : Service() {
 
         fun showBall(context: Context) {
             val intent = Intent(context, FloatRunService::class.java).setAction(ACTION_SHOW_BALL)
-            context.startService(intent)
+            ContextCompat.startForegroundService(context, intent)
         }
 
         private fun send(context: Context, action: String) {

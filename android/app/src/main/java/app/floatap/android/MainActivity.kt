@@ -13,10 +13,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FloatTheme {
-                FloatAppRoot(
-                    startOnGuide = !Prefs(this).boundaryAccepted,
-                    onLeaveToTarget = { moveTaskToBack(true) },
-                )
+                FloatAppRoot(startOnGuide = !Prefs(this).boundaryAccepted)
             }
         }
     }

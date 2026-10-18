@@ -127,7 +127,7 @@ fun HomeScreen(onCreate: () -> Unit, onEdit: (Long) -> Unit, onSettings: () -> U
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditScreen(jobId: Long, onBack: () -> Unit, onLeaveToTarget: () -> Unit) {
+fun EditScreen(jobId: Long, onBack: () -> Unit) {
     val context = LocalContext.current
     val vm: EditViewModel = viewModel(key = "edit-$jobId", factory = EditViewModel.factory(jobId))
     val ui = vm.state
@@ -163,10 +163,15 @@ fun EditScreen(jobId: Long, onBack: () -> Unit, onLeaveToTarget: () -> Unit) {
                 if (!context.canDrawOverlay()) {
                     vm.update { it.copy(error = "先打开悬浮窗权限") }
                 } else {
-                    FloatRunService.pick(context)
-                    onLeaveToTarget()
+                    FloatRunService.showBall(context)
+                    vm.update {
+                        it.copy(
+                            error = null,
+                            warning = "圆点会留在屏幕边缘。请打开要点的应用，点圆点，再点「选点」。不要按桌面键，从最近任务里切过去。",
+                        )
+                    }
                 }
-            }) { Text("选点") }
+            }) { Text("准备选点") }
             OutlinedTextField(
                 value = ui.intervalText,
                 onValueChange = { value -> vm.update { it.copy(intervalText = value.filter(Char::isDigit)) } },
@@ -207,7 +212,9 @@ fun EditScreen(jobId: Long, onBack: () -> Unit, onLeaveToTarget: () -> Unit) {
                     }
                     vm.save { id ->
                         FloatRunService.startJob(context, id)
-                        onLeaveToTarget()
+                        vm.update {
+                            it.copy(warning = "请从最近任务切到要点的应用。倒计时结束后开始点击，不要先回到桌面。")
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
