@@ -1,8 +1,11 @@
 package app.floatap.android.a11y
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.os.Build
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
 import app.floatap.android.domain.RunPhase
 import app.floatap.android.engine.ClickGate
@@ -13,6 +16,11 @@ import kotlin.coroutines.resume
 
 class FloatAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            serviceInfo = serviceInfo.apply {
+                flags = flags or AccessibilityServiceInfo.FLAG_SEND_MOTION_EVENTS
+            }
+        }
         ClickBridge.service = this
     }
 
@@ -30,6 +38,18 @@ class FloatAccessibilityService : AccessibilityService() {
         val touchedAt = event.eventTime
         if (touchedAt in ClickBridge.ownGestureStartedAt..ClickBridge.ownGestureUntil) return
         if (now < RunBus.ignoreUserTouchUntil) return
+        FloatRunService.pause(this)
+    }
+
+    override fun onMotionEvent(event: MotionEvent) {
+        if (event.actionMasked != MotionEvent.ACTION_DOWN) return
+        if (event.pointerCount > 0 && event.getToolType(0) == MotionEvent.TOOL_TYPE_UNKNOWN) return
+        val phase = RunBus.phase.value
+        if (phase != RunPhase.RUNNING && phase != RunPhase.ARMED) return
+        if (!RunBus.pauseOnUserTouch) return
+        val touchedAt = event.eventTime
+        if (touchedAt in ClickBridge.ownGestureStartedAt..ClickBridge.ownGestureUntil) return
+        if (System.currentTimeMillis() < RunBus.ignoreUserTouchUntil) return
         FloatRunService.pause(this)
     }
 

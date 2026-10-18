@@ -326,7 +326,6 @@ class FloatRunService : Service() {
         if (!RunBus.pauseOnUserTouch) return
         val phase = RunBus.phase.value
         if (phase != RunPhase.RUNNING && phase != RunPhase.ARMED) return
-        if (event.flags and 0x800 != 0) return
         val touchedAt = event.eventTime
         if (touchedAt in ClickBridge.ownGestureStartedAt..ClickBridge.ownGestureUntil) return
         if (System.currentTimeMillis() < RunBus.ignoreUserTouchUntil) return
