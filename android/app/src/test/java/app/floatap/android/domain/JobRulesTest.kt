@@ -27,6 +27,20 @@ class JobRulesTest {
     }
 
     @Test
+    fun rangeKeepsBothEnds() {
+        val checked = checkDraft(sample(intervalMs = 400, intervalMaxMs = 900))
+        assertNull(checked.issue)
+        assertEquals(400L, checked.intervalMs)
+        assertEquals(900L, checked.intervalMaxMs)
+    }
+
+    @Test
+    fun rangeRejectsMaxBelowMin() {
+        val checked = checkDraft(sample(intervalMs = 800, intervalMaxMs = 200))
+        assertEquals(DraftIssue.INTERVAL_ORDER, checked.issue)
+    }
+
+    @Test
     fun missingStopIsRejected() {
         val checked = checkDraft(sample(durationSec = null, clickLimit = null))
         assertEquals(DraftIssue.NO_STOP, checked.issue)
@@ -34,6 +48,7 @@ class JobRulesTest {
 
     private fun sample(
         intervalMs: Long = 500,
+        intervalMaxMs: Long? = null,
         x: Int = 10,
         durationSec: Long? = 60,
         clickLimit: Int? = null,
@@ -45,6 +60,7 @@ class JobRulesTest {
         displayHeight = 2400,
         rotation = 0,
         intervalMs = intervalMs,
+        intervalMaxMs = intervalMaxMs,
         durationSec = durationSec,
         clickLimit = clickLimit,
         countdownSec = 3,

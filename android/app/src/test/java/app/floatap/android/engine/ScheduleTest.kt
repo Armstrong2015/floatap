@@ -49,8 +49,10 @@ class ScheduleTest {
     @Test
     fun randomWaitsStayInsideTheClosedRangeAndAreNotIdentical() {
         val random = Random(20261018)
-        val samples = List(1000) { 400L + random.nextInt(201).toLong() }
+        val samples = List(1000) { waitMillis(400, 600, random) }
         assertTrue(samples.all { it in 400L..600L })
         assertTrue(samples.distinct().size > 1)
+        assertEquals(500L, waitMillis(500, 500, Random(1)))
+        assertEquals(500L, waitMillis(500, 100, Random(1)))
     }
 }

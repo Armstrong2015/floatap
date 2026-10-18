@@ -195,9 +195,22 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
             OutlinedTextField(
                 value = ui.intervalText,
                 onValueChange = { value -> vm.update { it.copy(intervalText = value.filter(Char::isDigit)) } },
-                label = { Text("间隔（毫秒）") },
+                label = { Text(if (ui.randomInterval) "最小间隔（毫秒）" else "间隔（毫秒）") },
                 modifier = Modifier.fillMaxWidth(),
             )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text("随机间隔")
+                Switch(checked = ui.randomInterval, onCheckedChange = { checked -> vm.update { it.copy(randomInterval = checked) } })
+            }
+            if (ui.randomInterval) {
+                OutlinedTextField(
+                    value = ui.intervalMaxText,
+                    onValueChange = { value -> vm.update { it.copy(intervalMaxText = value.filter(Char::isDigit)) } },
+                    label = { Text("最大间隔（毫秒）") },
+                    supportingText = { Text("每次等待在这两个时间之间随机取值") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             OutlinedTextField(
                 value = ui.durationText,
                 onValueChange = { value -> vm.update { it.copy(durationText = value.filter(Char::isDigit)) } },

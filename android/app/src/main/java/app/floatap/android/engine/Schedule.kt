@@ -1,6 +1,7 @@
 package app.floatap.android.engine
 
 import app.floatap.android.domain.StopReason
+import java.util.Random
 
 data class PlannedClick(
     val stepIndex: Int,
@@ -26,6 +27,19 @@ data class ScheduleResult(
  * [nextStop], click, and stop when the click limit, duration, or loop limit is met.
  * The clock is exact, so this is the reference the device loop is measured against.
  */
+/** Inclusive uniform draw. A max below min is treated as a fixed wait of min. */
+fun waitMillis(minMs: Long, maxMs: Long, random: Random): Long {
+    val min = minMs.coerceAtLeast(0)
+    val max = maxMs.coerceAtLeast(min)
+    if (max == min) return min
+    val span = max - min + 1
+    return if (span <= Int.MAX_VALUE) {
+        min + random.nextInt(span.toInt())
+    } else {
+        min + (random.nextDouble() * span).toLong().coerceAtMost(max - min)
+    }
+}
+
 fun schedule(input: ScheduleInput): ScheduleResult {
     require(input.waitsMs.isNotEmpty()) { "schedule needs at least one step" }
     val clicks = mutableListOf<PlannedClick>()

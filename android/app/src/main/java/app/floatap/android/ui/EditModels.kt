@@ -13,6 +13,7 @@ import app.floatap.android.Prefs
 import app.floatap.android.domain.Job
 import app.floatap.android.domain.JobDraft
 import app.floatap.android.domain.Step
+import app.floatap.android.domain.WaitMode
 import app.floatap.android.domain.checkDraft
 import app.floatap.android.overlay.PickerBus
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +29,8 @@ data class EditUi(
     val displayHeight: Int = 0,
     val rotation: Int = 0,
     val intervalText: String = "500",
+    val randomInterval: Boolean = false,
+    val intervalMaxText: String = "",
     val durationText: String = "60",
     val clickLimitText: String = "",
     val countdown: Int = 3,
@@ -55,6 +58,7 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                     state = state.copy(ready = true, error = "找不到这份作业")
                 } else {
                     val step = job.steps.firstOrNull()
+                    val ranged = step != null && step.waitMaxMs > step.waitMinMs
                     state = EditUi(
                         ready = true,
                         name = job.name,
@@ -64,6 +68,8 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                         displayHeight = step?.displayHeight ?: 0,
                         rotation = step?.rotation ?: 0,
                         intervalText = (step?.waitMinMs ?: 500L).toString(),
+                        randomInterval = ranged,
+                        intervalMaxText = if (ranged) step.waitMaxMs.toString() else "",
                         durationText = job.durationMs?.div(1000)?.toString().orEmpty(),
                         clickLimitText = job.clickLimit?.toString().orEmpty(),
                         countdown = job.countdownSec,
@@ -121,6 +127,7 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                     displayHeight = ui.displayHeight,
                     rotation = ui.rotation,
                     intervalMs = ui.intervalText.toLongOrNull() ?: -1L,
+                    intervalMaxMs = if (ui.randomInterval) ui.intervalMaxText.toLongOrNull() ?: -1L else null,
                     durationSec = ui.durationText.toLongOrNull(),
                     clickLimit = ui.clickLimitText.toIntOrNull(),
                     countdownSec = ui.countdown,
@@ -147,8 +154,9 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                             displayWidth = ui.displayWidth,
                             displayHeight = ui.displayHeight,
                             rotation = ui.rotation,
+                            waitMode = if (checked.intervalMaxMs > checked.intervalMs) WaitMode.RANGE else WaitMode.FIXED,
                             waitMinMs = checked.intervalMs,
-                            waitMaxMs = checked.intervalMs,
+                            waitMaxMs = checked.intervalMaxMs,
                         ),
                     ),
                     durationMs = checked.durationMs,

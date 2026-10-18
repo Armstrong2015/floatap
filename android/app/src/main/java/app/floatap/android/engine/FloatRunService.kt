@@ -242,10 +242,13 @@ class FloatRunService : Service() {
         var progress = Progress()
         val stepCount = job.steps.size
         var index = 0
+        val waitRandom = java.util.Random()
         while (RunBus.phase.value == RunPhase.RUNNING || RunBus.phase.value == RunPhase.PAUSED) {
             val current = job.steps[index]
-            holdWake(current.waitMinMs)
-            waitReady(current.waitMinMs)
+            val wait = waitMillis(current.waitMinMs, current.waitMaxMs, waitRandom)
+            android.util.Log.i(TAG, "wait ${wait}ms")
+            holdWake(wait)
+            waitReady(wait)
             if (RunBus.phase.value == RunPhase.PAUSED) continue
             if (RunBus.phase.value != RunPhase.RUNNING) break
             if (!isAccessibilityEnabled()) {
