@@ -28,6 +28,7 @@ class ScreenOverlay(private val context: Context) {
     var onStop: () -> Unit = {}
     var onOpenApp: () -> Unit = {}
     var onPickRequest: () -> Unit = {}
+    var startCaption: () -> String = { "开始" }
     var onPick: (x: Int, y: Int) -> Unit = { _, _ -> }
     var onCancelPick: () -> Unit = {}
 
@@ -107,6 +108,31 @@ class ScreenOverlay(private val context: Context) {
         )
         wm.addView(root, params)
         picker = root
+    }
+
+    fun flash(x: Int, y: Int) {
+        val density = context.resources.displayMetrics.density
+        val size = (40 * density).toInt()
+        val mark = View(context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0x66FFB020)
+                setStroke((3 * density).toInt(), 0xFFFFC14D.toInt())
+            }
+        }
+        val params = overlayParams(size, size)
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = x - size / 2
+        params.y = y - size / 2
+        if (runCatching { wm.addView(mark, params) }.isFailure) return
+        mark.animate()
+            .scaleX(2.4f)
+            .scaleY(2.4f)
+            .alpha(0f)
+            .setDuration(360)
+            .withEndAction { runCatching { wm.removeView(mark) } }
+            .start()
     }
 
     fun hidePicker() {
@@ -191,7 +217,7 @@ class ScreenOverlay(private val context: Context) {
             }
             RunPhase.IDLE -> {
                 row.addButton("选点") { hideMenu(); onPickRequest() }
-                row.addButton("开始") { hideMenu(); onStart() }
+                row.addButton(startCaption()) { hideMenu(); onStart() }
                 row.addButton("打开") { hideMenu(); onOpenApp() }
             }
         }
@@ -211,6 +237,9 @@ class ScreenOverlay(private val context: Context) {
             text = label
             setTextColor(android.graphics.Color.WHITE)
             textSize = 16f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            maxWidth = (160 * context.resources.displayMetrics.density).toInt()
             setPadding(32, 20, 32, 20)
             isClickable = true
             setOnClickListener { click() }

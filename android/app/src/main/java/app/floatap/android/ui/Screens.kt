@@ -213,13 +213,13 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                     vm.save { id ->
                         FloatRunService.startJob(context, id)
                         vm.update {
-                            it.copy(warning = "请从最近任务切到要点的应用。倒计时结束后开始点击，不要先回到桌面。")
+                            it.copy(warning = "已开始「${ui.name.trim()}」。请从最近任务切到要点的应用，倒计时结束后才会点击。")
                         }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = context.canDrawOverlay() && context.isAccessibilityEnabled(),
-            ) { Text("开始") }
+            ) { Text(if (ui.name.isBlank()) "开始这一份" else "开始「${ui.name.trim()}」") }
         }
     }
 }

@@ -140,6 +140,7 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
             )
             currentId = id
             prefs.lastJobId = id
+            prefs.lastJobName = ui.name.trim()
             state = ui.copy(
                 error = null,
                 warning = if (checked.intervalAdjusted) "已把间隔调整为 50 毫秒" else null,
@@ -169,6 +170,7 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val repository = (app as FloatApp).repository
+    private val prefs = Prefs(app)
     val jobs = repository.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     var message by mutableStateOf<String?>(null)
         private set
@@ -180,7 +182,13 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             message = "先停止这份作业再删除"
             return
         }
-        viewModelScope.launch { repository.delete(id) }
+        viewModelScope.launch {
+            repository.delete(id)
+            if (prefs.lastJobId == id) {
+                prefs.lastJobId = 0L
+                prefs.lastJobName = ""
+            }
+        }
     }
 
     fun clearMessage() {

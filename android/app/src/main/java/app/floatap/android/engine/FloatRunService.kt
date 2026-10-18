@@ -160,9 +160,10 @@ class FloatRunService : Service() {
         }
         setPhase(RunPhase.ARMED)
         var seconds = job.countdownSec
+        notify("即将运行「${job.name}」")
         while (seconds > 0) {
             if (RunBus.phase.value != RunPhase.ARMED) return
-            notify("切到要点的界面，$seconds 秒后开始")
+            notify("「${job.name}」$seconds 秒后开始")
             delay(1000)
             seconds -= 1
         }
@@ -191,6 +192,7 @@ class FloatRunService : Service() {
                 stopRun(reason, cancelLoop = false)
                 return
             }
+            overlay?.flash(current.x, current.y)
             val ok = ClickBridge.tap(current.x, current.y, runId)
             if (!ok || !ClickBridge.gate.allows(runId)) {
                 stopRun(StopReason.PERMISSION, cancelLoop = false)
@@ -202,7 +204,7 @@ class FloatRunService : Service() {
             val loops = if (nextIndex == 0) progress.loops + 1 else progress.loops
             progress = Progress(clicks, loops, first)
             index = nextIndex
-            notify("已点击 $clicks 次")
+            notify("「${job.name}」已点击 $clicks 次")
             val after = nextStop(
                 job.durationMs,
                 job.clickLimit,
@@ -286,6 +288,10 @@ class FloatRunService : Service() {
         val existing = overlay
         if (existing != null) return existing
         return ScreenOverlay(this).also { created ->
+            created.startCaption = {
+                val name = Prefs(this).lastJobName
+                if (name.isBlank()) "开始" else "开始「$name」"
+            }
             created.onStart = {
                 val id = Prefs(this).lastJobId
                 if (id == 0L) openApp() else beginRun(id)
