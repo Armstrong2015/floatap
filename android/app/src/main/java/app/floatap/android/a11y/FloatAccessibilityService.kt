@@ -25,7 +25,9 @@ class FloatAccessibilityService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_TOUCH_INTERACTION_START) return
         if (RunBus.phase.value != RunPhase.RUNNING) return
         if (!RunBus.pauseOnUserTouch) return
-        if (System.currentTimeMillis() - ClickBridge.lastOwnGestureAt < 300) return
+        val now = System.currentTimeMillis()
+        if (now - ClickBridge.lastOwnGestureAt < 300) return
+        if (now < RunBus.ignoreUserTouchUntil) return
         FloatRunService.pause(this)
     }
 

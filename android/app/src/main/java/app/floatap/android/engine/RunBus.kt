@@ -12,4 +12,7 @@ object RunBus {
 
     @Volatile
     var activeJobId: Long = 0L
+
+    @Volatile
+    var ignoreUserTouchUntil: Long = 0L
 }

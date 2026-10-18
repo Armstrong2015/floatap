@@ -43,6 +43,7 @@ class FloatRunService : Service() {
     private var runJob: Job? = null
     private var overlay: ScreenOverlay? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var pausedFrom = RunPhase.RUNNING
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -221,11 +222,17 @@ class FloatRunService : Service() {
         var seconds = job.countdownSec
         notify("即将运行「${job.name}」")
         while (seconds > 0) {
-            if (RunBus.phase.value != RunPhase.ARMED) return
-            notify("「${job.name}」$seconds 秒后开始")
-            delay(1000)
-            seconds -= 1
+            when (RunBus.phase.value) {
+                RunPhase.ARMED -> {
+                    notify("「${job.name}」$seconds 秒后开始")
+                    delay(1000)
+                    if (RunBus.phase.value == RunPhase.ARMED) seconds -= 1
+                }
+                RunPhase.PAUSED -> delay(200)
+                else -> return
+            }
         }
+        while (RunBus.phase.value == RunPhase.PAUSED) delay(200)
         if (RunBus.phase.value != RunPhase.ARMED) return
         setPhase(RunPhase.RUNNING)
         ClickBridge.gate.open(runId)
@@ -236,6 +243,7 @@ class FloatRunService : Service() {
             val current = job.steps[index]
             holdWake(current.waitMinMs)
             waitReady(current.waitMinMs)
+            if (RunBus.phase.value == RunPhase.PAUSED) continue
             if (RunBus.phase.value != RunPhase.RUNNING) break
             if (!isAccessibilityEnabled()) {
                 stopRun(StopReason.PERMISSION, cancelLoop = false)
@@ -306,7 +314,9 @@ class FloatRunService : Service() {
     }
 
     private fun pauseInternal() {
-        if (RunBus.phase.value == RunPhase.RUNNING) {
+        val phase = RunBus.phase.value
+        if (phase == RunPhase.RUNNING || phase == RunPhase.ARMED) {
+            pausedFrom = phase
             setPhase(RunPhase.PAUSED)
             notify("已暂停")
         }
@@ -314,7 +324,7 @@ class FloatRunService : Service() {
 
     private fun resumeInternal() {
         if (RunBus.phase.value == RunPhase.PAUSED) {
-            setPhase(RunPhase.RUNNING)
+            setPhase(pausedFrom)
         }
     }
 

@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.os.Build
+import android.os.SystemClock
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -23,6 +24,7 @@ class ScreenOverlay(private val context: Context) {
     private var menu: View? = null
     private var picker: View? = null
     private var note: View? = null
+    private var menuReadyAt = 0L
 
     var onStart: () -> Unit = {}
     var onPause: () -> Unit = {}
@@ -196,6 +198,8 @@ class ScreenOverlay(private val context: Context) {
                     downY = event.rawY
                     startX = params.x
                     startY = params.y
+                    app.floatap.android.engine.RunBus.ignoreUserTouchUntil =
+                        System.currentTimeMillis() + 700
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -210,7 +214,9 @@ class ScreenOverlay(private val context: Context) {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (dragging) snap(params, size) else onBallTap(params, size)
+                    if (dragging) snap(params, size) else {
+                        view.post { onBallTap(params, size) }
+                    }
                     true
                 }
                 else -> false
@@ -308,6 +314,7 @@ class ScreenOverlay(private val context: Context) {
         params.y = anchor.y.coerceIn(0, (screen.height - ballSize).coerceAtLeast(0))
         wm.addView(content, params)
         menu = content
+        menuReadyAt = SystemClock.uptimeMillis() + 400
     }
 
     private fun chip(label: String, selected: Boolean, click: () -> Unit): TextView {
@@ -321,7 +328,10 @@ class ScreenOverlay(private val context: Context) {
             setPadding(32, 20, 32, 20)
             if (selected) setBackgroundColor(0xFF1F6B4A.toInt())
             isClickable = true
-            setOnClickListener { click() }
+            setOnClickListener {
+                if (SystemClock.uptimeMillis() < menuReadyAt) return@setOnClickListener
+                click()
+            }
         }
     }
 
