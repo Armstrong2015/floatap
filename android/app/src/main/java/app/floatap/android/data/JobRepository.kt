@@ -5,6 +5,7 @@ import app.floatap.android.domain.JobSummary
 import app.floatap.android.domain.Step
 import app.floatap.android.domain.WaitMode
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 class JobRepository(private val dao: JobDao) {
@@ -15,6 +16,8 @@ class JobRepository(private val dao: JobDao) {
     }
 
     suspend fun count(): Int = dao.count()
+
+    suspend fun summaries(): List<JobSummary> = observe().first()
 
     suspend fun get(id: Long): Job? {
         val job = dao.job(id) ?: return null

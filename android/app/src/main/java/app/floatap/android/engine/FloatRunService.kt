@@ -22,6 +22,7 @@ import app.floatap.android.Prefs
 import app.floatap.android.R
 import app.floatap.android.a11y.ClickBridge
 import app.floatap.android.domain.RunPhase
+import app.floatap.android.domain.Step
 import app.floatap.android.domain.StopReason
 import app.floatap.android.domain.displayMatches
 import app.floatap.android.isAccessibilityEnabled
@@ -92,31 +93,89 @@ class FloatRunService : Service() {
             windows.showBall(RunBus.phase.value)
             windows.onPick = { x, y ->
                 onMain {
-                    try {
-                        val display = readDisplay()
-                        PickerBus.pending = app.floatap.android.overlay.PickResult(
-                            x, y, display.width, display.height, display.rotation,
-                        )
-                        windows.hidePicker()
-                        openApp()
-                    } catch (error: Exception) {
-                        android.util.Log.e(TAG, "pick failed", error)
-                        RunBus.message.value = "选点没有记下：${error.javaClass.simpleName}"
-                        windows.hidePicker()
-                    }
+                    windows.hidePicker()
+                    savePick(x, y)
                 }
             }
             windows.onCancelPick = {
-                onMain {
-                    windows.hidePicker()
-                    runCatching { openApp() }
-                }
+                onMain { windows.hidePicker() }
             }
             windows.showPicker()
         } catch (error: Exception) {
             android.util.Log.e(TAG, "picker failed", error)
             RunBus.message.value = "选点层没有打开：${error.javaClass.simpleName}"
         }
+    }
+
+    private fun savePick(x: Int, y: Int) {
+        scope.launch {
+            try {
+                val prefs = Prefs(this@FloatRunService)
+                val display = readDisplay()
+                val summaries = (application as FloatApp).repository.summaries()
+                val selected = summaries.firstOrNull { it.id == prefs.lastJobId }
+                val repository = (application as FloatApp).repository
+                if (selected == null && summaries.isNotEmpty()) {
+                    windows().showNote("先在圆点里点一份作业")
+                    return@launch
+                }
+                if (selected == null) {
+                    val name = "作业${repository.count() + 1}"
+                    val id = repository.save(
+                        app.floatap.android.domain.Job(
+                            name = name,
+                            steps = listOf(pointStep(x, y, display.width, display.height, display.rotation)),
+                            durationMs = 60_000,
+                            clickLimit = null,
+                            countdownSec = 3,
+                        ),
+                    )
+                    prefs.lastJobId = id
+                    prefs.lastJobName = name
+                    rememberPick(x, y, display.width, display.height, display.rotation)
+                    windows().showNote("已新建「$name」并记下 $x, $y")
+                    return@launch
+                }
+                val job = repository.get(selected.id)
+                if (job == null) {
+                    windows().showNote("这份作业已经不在了")
+                    return@launch
+                }
+                val steps = job.steps.toMutableList()
+                val point = pointStep(x, y, display.width, display.height, display.rotation)
+                if (steps.isEmpty()) steps += point else steps[0] = steps[0].copy(
+                    x = point.x,
+                    y = point.y,
+                    displayWidth = point.displayWidth,
+                    displayHeight = point.displayHeight,
+                    rotation = point.rotation,
+                )
+                repository.save(job.copy(steps = steps))
+                prefs.lastJobId = job.id
+                prefs.lastJobName = job.name
+                rememberPick(x, y, display.width, display.height, display.rotation)
+                windows().showNote("已记下「${job.name}」$x, $y")
+            } catch (error: Exception) {
+                android.util.Log.e(TAG, "save pick failed", error)
+                windows().showNote("选点没有记下")
+            }
+        }
+    }
+
+    private fun pointStep(x: Int, y: Int, width: Int, height: Int, rotation: Int) = Step(
+        order = 0,
+        name = "点击",
+        x = x,
+        y = y,
+        displayWidth = width,
+        displayHeight = height,
+        rotation = rotation,
+        waitMinMs = 500,
+        waitMaxMs = 500,
+    )
+
+    private fun rememberPick(x: Int, y: Int, width: Int, height: Int, rotation: Int) {
+        PickerBus.pending = app.floatap.android.overlay.PickResult(x, y, width, height, rotation)
     }
 
     private fun beginRun(jobId: Long) {
@@ -288,28 +347,46 @@ class FloatRunService : Service() {
         val existing = overlay
         if (existing != null) return existing
         return ScreenOverlay(this).also { created ->
-            created.startCaption = {
-                val name = Prefs(this).lastJobName
-                if (name.isBlank()) "开始" else "开始「$name」"
+            created.onPrepareIdleMenu = { showIdleMenu() }
+            created.onSelectJob = { id, name ->
+                Prefs(this).lastJobId = id
+                Prefs(this).lastJobName = name
+                showIdleMenu()
             }
             created.onStart = {
                 val id = Prefs(this).lastJobId
-                if (id == 0L) openApp() else beginRun(id)
+                if (id == 0L) windows().showNote("先选择一份作业") else beginRun(id)
             }
             created.onPause = { pauseInternal() }
             created.onResume = { resumeInternal() }
             created.onStop = { stopRun(StopReason.USER) }
-            created.onOpenApp = { openApp() }
+            created.onOpenApp = { openEditor(Prefs(this).lastJobId) }
             created.onPickRequest = { beginPick() }
             overlay = created
         }
     }
 
-    private fun openApp() {
+    private fun showIdleMenu() {
+        scope.launch {
+            val jobs = (application as FloatApp).repository.summaries()
+            windows().showIdleMenu(
+                jobs.map { it.id to it.name },
+                Prefs(this@FloatRunService).lastJobId,
+            )
+        }
+    }
+
+    private fun openEditor(jobId: Long) {
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            if (jobId != 0L) putExtra(MainActivity.EXTRA_EDIT_JOB, jobId)
         }
-        startActivity(intent)
+        try {
+            startActivity(intent)
+        } catch (error: Exception) {
+            android.util.Log.e(TAG, "open editor failed", error)
+            windows().showNote("没有打开编辑页")
+        }
     }
 
     private fun promote(text: String) {

@@ -11,6 +11,7 @@ import android.view.WindowManager
 import android.os.Build
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import app.floatap.android.domain.RunPhase
 import kotlin.math.hypot
@@ -21,6 +22,7 @@ class ScreenOverlay(private val context: Context) {
     private var ballParams: WindowManager.LayoutParams? = null
     private var menu: View? = null
     private var picker: View? = null
+    private var note: View? = null
 
     var onStart: () -> Unit = {}
     var onPause: () -> Unit = {}
@@ -28,7 +30,8 @@ class ScreenOverlay(private val context: Context) {
     var onStop: () -> Unit = {}
     var onOpenApp: () -> Unit = {}
     var onPickRequest: () -> Unit = {}
-    var startCaption: () -> String = { "开始" }
+    var onPrepareIdleMenu: () -> Unit = {}
+    var onSelectJob: (Long, String) -> Unit = { _, _ -> }
     var onPick: (x: Int, y: Int) -> Unit = { _, _ -> }
     var onCancelPick: () -> Unit = {}
 
@@ -58,8 +61,35 @@ class ScreenOverlay(private val context: Context) {
         menu = null
     }
 
+    fun showNote(text: String) {
+        hideNote()
+        val view = TextView(context).apply {
+            this.text = text
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 16f
+            setBackgroundColor(0xF0141A1F.toInt())
+            setPadding(36, 24, 36, 24)
+        }
+        val params = overlayParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        params.y = systemBarPx("navigation_bar_height") + 48
+        if (runCatching { wm.addView(view, params) }.isFailure) return
+        note = view
+        view.postDelayed({ hideNote() }, 1800)
+    }
+
+    fun hideNote() {
+        note?.let { runCatching { wm.removeView(it) } }
+        note = null
+    }
+
     fun hideAll() {
         hideMenu()
+        hideNote()
         ball?.let { runCatching { wm.removeView(it) } }
         ball = null
         ballParams = null
@@ -94,7 +124,7 @@ class ScreenOverlay(private val context: Context) {
             textSize = 16f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val cancel = chip("取消") { onCancelPick() }
+        val cancel = chip("取消", selected = false) { onCancelPick() }
         bar.addView(label)
         bar.addView(cancel)
         root.addView(bar, FrameLayout.LayoutParams(
@@ -180,7 +210,7 @@ class ScreenOverlay(private val context: Context) {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (dragging) snap(params, size) else toggleMenu(params, size)
+                    if (dragging) snap(params, size) else onBallTap(params, size)
                     true
                 }
                 else -> false
@@ -196,58 +226,107 @@ class ScreenOverlay(private val context: Context) {
         ball?.let { wm.updateViewLayout(it, params) }
     }
 
-    private fun toggleMenu(params: WindowManager.LayoutParams, size: Int) {
+    private fun onBallTap(params: WindowManager.LayoutParams, size: Int) {
         if (menu != null) {
             hideMenu()
             return
         }
+        when (app.floatap.android.engine.RunBus.phase.value) {
+            RunPhase.RUNNING, RunPhase.ARMED -> showActionMenu(params, size, "暂停", onPause)
+            RunPhase.PAUSED -> showActionMenu(params, size, "继续", onResume)
+            RunPhase.IDLE -> onPrepareIdleMenu()
+        }
+    }
+
+    private fun showActionMenu(
+        params: WindowManager.LayoutParams,
+        size: Int,
+        primary: String,
+        primaryAction: () -> Unit,
+    ) {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(0xF0141A1F.toInt())
             setPadding(8, 8, 8, 8)
+            addButton(primary, selected = false) { hideMenu(); primaryAction() }
+            addButton("停止", selected = false) { hideMenu(); onStop() }
         }
-        when (app.floatap.android.engine.RunBus.phase.value) {
-            RunPhase.RUNNING, RunPhase.ARMED -> {
-                row.addButton("暂停") { hideMenu(); onPause() }
-                row.addButton("停止") { hideMenu(); onStop() }
-            }
-            RunPhase.PAUSED -> {
-                row.addButton("继续") { hideMenu(); onResume() }
-                row.addButton("停止") { hideMenu(); onStop() }
-            }
-            RunPhase.IDLE -> {
-                row.addButton("选点") { hideMenu(); onPickRequest() }
-                row.addButton(startCaption()) { hideMenu(); onStart() }
-                row.addButton("打开") { hideMenu(); onOpenApp() }
-            }
+        placeMenu(row, params, size)
+    }
+
+    fun showIdleMenu(jobs: List<Pair<Long, String>>, selectedId: Long) {
+        val anchor = ballParams ?: return
+        val size = ball?.width?.takeIf { it > 0 } ?: (56 * context.resources.displayMetrics.density).toInt()
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xF0141A1F.toInt())
+            setPadding(8, 8, 8, 8)
         }
-        val menuParams = overlayParams(
+        if (jobs.isEmpty()) {
+            column.addView(TextView(context).apply {
+                text = "还没有作业，选点会新建一份"
+                setTextColor(0xFFD0D7DE.toInt())
+                textSize = 14f
+                setPadding(32, 16, 32, 8)
+            })
+        } else {
+            val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            jobs.forEach { (id, name) ->
+                val selected = id == selectedId
+                list.addButton(if (selected) "当前 $name" else name, selected) {
+                    onSelectJob(id, name)
+                }
+            }
+            val scroll = ScrollView(context).apply { addView(list) }
+            val rowHeight = (52 * context.resources.displayMetrics.density).toInt()
+            val height = (jobs.size * rowHeight).coerceAtMost((240 * context.resources.displayMetrics.density).toInt())
+            column.addView(scroll, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                height,
+            ))
+        }
+        column.addButton("选点", selected = false) { hideMenu(); onPickRequest() }
+        column.addButton("开始", selected = false) { hideMenu(); onStart() }
+        column.addButton("打开", selected = false) { hideMenu(); onOpenApp() }
+        placeMenu(column, anchor, size)
+    }
+
+    private fun placeMenu(content: View, anchor: WindowManager.LayoutParams, ballSize: Int) {
+        hideMenu()
+        val screen = context.readDisplay()
+        val params = overlayParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
-        menuParams.gravity = Gravity.TOP or Gravity.START
-        menuParams.x = params.x + size
-        menuParams.y = params.y
-        wm.addView(row, menuParams)
-        menu = row
+        params.gravity = Gravity.TOP or Gravity.START
+        val menuWidth = (200 * context.resources.displayMetrics.density).toInt()
+        params.x = if (anchor.x + ballSize + menuWidth > screen.width) {
+            (anchor.x - menuWidth).coerceAtLeast(0)
+        } else {
+            anchor.x + ballSize
+        }
+        params.y = anchor.y.coerceIn(0, (screen.height - ballSize).coerceAtLeast(0))
+        wm.addView(content, params)
+        menu = content
     }
 
-    private fun chip(label: String, click: () -> Unit): TextView {
+    private fun chip(label: String, selected: Boolean, click: () -> Unit): TextView {
         return TextView(context).apply {
             text = label
             setTextColor(android.graphics.Color.WHITE)
             textSize = 16f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            maxWidth = (160 * context.resources.displayMetrics.density).toInt()
+            maxWidth = (200 * context.resources.displayMetrics.density).toInt()
             setPadding(32, 20, 32, 20)
+            if (selected) setBackgroundColor(0xFF1F6B4A.toInt())
             isClickable = true
             setOnClickListener { click() }
         }
     }
 
-    private fun LinearLayout.addButton(label: String, click: () -> Unit) {
-        addView(chip(label, click))
+    private fun LinearLayout.addButton(label: String, selected: Boolean, click: () -> Unit) {
+        addView(chip(label, selected, click))
     }
 
     private fun circle(color: String): GradientDrawable {

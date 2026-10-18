@@ -87,6 +87,24 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
         )
     }
 
+    fun savedId(): Long = currentId
+
+    fun refreshPoint() {
+        val id = currentId
+        if (!state.ready || id == 0L) return
+        viewModelScope.launch {
+            val step = repository.get(id)?.steps?.firstOrNull() ?: return@launch
+            if (currentId != id) return@launch
+            state = state.copy(
+                x = step.x,
+                y = step.y,
+                displayWidth = step.displayWidth,
+                displayHeight = step.displayHeight,
+                rotation = step.rotation,
+            )
+        }
+    }
+
     fun update(block: (EditUi) -> EditUi) {
         state = block(state)
     }

@@ -134,7 +134,10 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.consumePick()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                vm.consumePick()
+                vm.refreshPoint()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -163,11 +166,15 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                 if (!context.canDrawOverlay()) {
                     vm.update { it.copy(error = "先打开悬浮窗权限") }
                 } else {
+                    if (vm.savedId() != 0L) {
+                        Prefs(context).lastJobId = vm.savedId()
+                        Prefs(context).lastJobName = ui.name.trim()
+                    }
                     FloatRunService.showBall(context)
                     vm.update {
                         it.copy(
                             error = null,
-                            warning = "圆点会留在屏幕边缘。请打开要点的应用，点圆点，再点「选点」。不要按桌面键，从最近任务里切过去。",
+                            warning = "到要点的应用后，点圆点再点「选点」。坐标会直接记到当前作业，不会打开这个页面。",
                         )
                     }
                 }
