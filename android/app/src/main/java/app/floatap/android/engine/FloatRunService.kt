@@ -9,7 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
@@ -74,6 +76,10 @@ class FloatRunService : Service() {
         super.onDestroy()
     }
 
+    private fun onMain(block: () -> Unit) {
+        Handler(Looper.getMainLooper()).post(block)
+    }
+
     private fun showBall() {
         val windows = windows()
         windows.showBall(RunBus.phase.value)
@@ -85,16 +91,26 @@ class FloatRunService : Service() {
             val windows = windows()
             windows.showBall(RunBus.phase.value)
             windows.onPick = { x, y ->
-                val display = readDisplay()
-                PickerBus.pending = app.floatap.android.overlay.PickResult(
-                    x, y, display.width, display.height, display.rotation,
-                )
-                windows.hidePicker()
-                openApp()
+                onMain {
+                    try {
+                        val display = readDisplay()
+                        PickerBus.pending = app.floatap.android.overlay.PickResult(
+                            x, y, display.width, display.height, display.rotation,
+                        )
+                        windows.hidePicker()
+                        openApp()
+                    } catch (error: Exception) {
+                        android.util.Log.e(TAG, "pick failed", error)
+                        RunBus.message.value = "选点没有记下：${error.javaClass.simpleName}"
+                        windows.hidePicker()
+                    }
+                }
             }
             windows.onCancelPick = {
-                windows.hidePicker()
-                openApp()
+                onMain {
+                    windows.hidePicker()
+                    runCatching { openApp() }
+                }
             }
             windows.showPicker()
         } catch (error: Exception) {

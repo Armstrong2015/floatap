@@ -2,24 +2,15 @@ package app.floatap.android.overlay
 
 import android.content.Context
 import android.graphics.Point
-import android.os.Build
-import android.view.WindowManager
+import android.hardware.display.DisplayManager
+import android.view.Display
 import app.floatap.android.domain.DisplaySnapshot
 
 fun Context.readDisplay(): DisplaySnapshot {
-    val wm = getSystemService(WindowManager::class.java)
-    val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        display?.rotation ?: wm.defaultDisplay.rotation
-    } else {
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.rotation
-    }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        val bounds = wm.currentWindowMetrics.bounds
-        return DisplaySnapshot(bounds.width(), bounds.height(), rotation)
-    }
-    val point = Point()
+    // A service has no visual Context. Context.display throws instead of returning null.
+    val display = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+    val size = Point()
     @Suppress("DEPRECATION")
-    wm.defaultDisplay.getRealSize(point)
-    return DisplaySnapshot(point.x, point.y, rotation)
+    display.getRealSize(size)
+    return DisplaySnapshot(size.x, size.y, display.rotation)
 }

@@ -83,7 +83,8 @@ class ScreenOverlay(private val context: Context) {
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(0xF0141A1F.toInt())
-            setPadding(24, 24, 24, 24)
+            val nav = systemBarPx("navigation_bar_height")
+            setPadding(24, 24, 24, 24 + nav)
             isClickable = true
         }
         val label = TextView(context).apply {
@@ -98,7 +99,7 @@ class ScreenOverlay(private val context: Context) {
         root.addView(bar, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP,
+            Gravity.BOTTOM,
         ))
         val params = overlayParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -225,6 +226,11 @@ class ScreenOverlay(private val context: Context) {
             shape = GradientDrawable.OVAL
             setColor(android.graphics.Color.parseColor(color))
         }
+    }
+
+    private fun systemBarPx(name: String): Int {
+        val id = context.resources.getIdentifier(name, "dimen", "android")
+        return if (id > 0) context.resources.getDimensionPixelSize(id) else 0
     }
 
     private fun overlayParams(width: Int, height: Int): WindowManager.LayoutParams {
