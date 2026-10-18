@@ -35,6 +35,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -89,10 +92,7 @@ fun HomeScreen(onCreate: () -> Unit, onEdit: (Long) -> Unit, onSettings: () -> U
         },
     ) { padding ->
         Column(Modifier.padding(padding).padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!context.canDrawOverlay() || !context.isAccessibilityEnabled()) {
-                Text("开始前需要悬浮窗和辅助功能。可以在设置里打开。")
-                TextButton(onClick = onSettings) { Text("去设置") }
-            }
+            PermissionReminder(onSettings)
             if (Build.VERSION.SDK_INT >= 33) {
                 TextButton(onClick = { notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
                     Text("允许通知，以便运行时停止")
@@ -234,13 +234,15 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                 Text("触摸屏幕时暂停")
                 Switch(checked = ui.pauseOnTouch, onCheckedChange = { checked -> vm.update { it.copy(pauseOnTouch = checked) } })
             }
+            PermissionReminder(onSettings = null)
             ui.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             ui.warning?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             Button(onClick = { vm.save { } }, modifier = Modifier.fillMaxWidth()) { Text("保存") }
             Button(
                 onClick = {
-                    if (!context.canDrawOverlay() || !context.isAccessibilityEnabled()) {
-                        vm.update { it.copy(error = "悬浮窗和辅助功能都要开启") }
+                    val blocked = permissionBlock(context.canDrawOverlay(), context.isAccessibilityEnabled())
+                    if (blocked != null) {
+                        vm.update { it.copy(error = blocked) }
                         return@Button
                     }
                     vm.save { id ->
@@ -251,7 +253,6 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = context.canDrawOverlay() && context.isAccessibilityEnabled(),
             ) { Text(if (ui.name.isBlank()) "开始这一份" else "开始「${ui.name.trim()}」") }
         }
     }
@@ -286,6 +287,37 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
             Text(stringResource(R.string.boundary))
         }
+    }
+}
+
+@Composable
+private fun PermissionReminder(onSettings: (() -> Unit)?) {
+    val context = LocalContext.current
+    var overlay by remember { mutableStateOf(context.canDrawOverlay()) }
+    var accessibility by remember { mutableStateOf(context.isAccessibilityEnabled()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                overlay = context.canDrawOverlay()
+                accessibility = context.isAccessibilityEnabled()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val message = permissionBlock(overlay, accessibility) ?: return
+    Text(message, color = MaterialTheme.colorScheme.error)
+    if (onSettings != null) {
+        TextButton(onClick = onSettings) { Text("去设置") }
+    }
+}
+
+private fun permissionBlock(overlay: Boolean, accessibility: Boolean): String? {
+    return when {
+        !accessibility -> "辅助功能还没打开，浮序无法点击。请到设置里打开「浮序」。"
+        !overlay -> "悬浮窗还没打开。请到设置里允许显示在其他应用上层。"
+        else -> null
     }
 }
 

@@ -210,8 +210,8 @@ class FloatRunService : Service() {
         val step = job.steps.first()
         RunBus.pauseOnUserTouch = job.pauseOnUserTouch
         if (!isAccessibilityEnabled() || !displayMatches(step, readDisplay())) {
-            RunBus.message.value = if (!isAccessibilityEnabled()) {
-                "辅助功能未开启"
+            val detail = if (!isAccessibilityEnabled()) {
+                "辅助功能还没打开，浮序无法点击。请到设置里打开「浮序」。"
             } else {
                 "屏幕尺寸和标定时不一致，请重新选点"
             }
@@ -219,6 +219,8 @@ class FloatRunService : Service() {
                 if (!isAccessibilityEnabled()) StopReason.PERMISSION else StopReason.DISPLAY_CHANGED,
                 cancelLoop = false,
             )
+            RunBus.message.value = detail
+            windows().showNote(detail)
             return
         }
         setPhase(RunPhase.ARMED)
