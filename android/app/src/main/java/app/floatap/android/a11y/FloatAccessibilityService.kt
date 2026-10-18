@@ -23,10 +23,12 @@ class FloatAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_TOUCH_INTERACTION_START) return
-        if (RunBus.phase.value != RunPhase.RUNNING) return
+        val phase = RunBus.phase.value
+        if (phase != RunPhase.RUNNING && phase != RunPhase.ARMED) return
         if (!RunBus.pauseOnUserTouch) return
         val now = System.currentTimeMillis()
-        if (now - ClickBridge.lastOwnGestureAt < 300) return
+        val touchedAt = event.eventTime
+        if (touchedAt in ClickBridge.ownGestureStartedAt..ClickBridge.ownGestureUntil) return
         if (now < RunBus.ignoreUserTouchUntil) return
         FloatRunService.pause(this)
     }
@@ -42,7 +44,9 @@ class FloatAccessibilityService : AccessibilityService() {
         val stroke = GestureDescription.StrokeDescription(path, 0, TAP_DURATION_MS)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         if (!ClickBridge.gate.allows(runId)) return false
-        ClickBridge.lastOwnGestureAt = System.currentTimeMillis()
+        val started = android.os.SystemClock.uptimeMillis()
+        ClickBridge.ownGestureStartedAt = started
+        ClickBridge.ownGestureUntil = started + TAP_DURATION_MS + 80
         return suspendCancellableCoroutine { cont ->
             val accepted = dispatchGesture(
                 gesture,
@@ -74,7 +78,10 @@ object ClickBridge {
     var service: FloatAccessibilityService? = null
 
     @Volatile
-    var lastOwnGestureAt: Long = 0L
+    var ownGestureStartedAt: Long = 0L
+
+    @Volatile
+    var ownGestureUntil: Long = 0L
 
     suspend fun tap(x: Int, y: Int, runId: Long): Boolean {
         val current = service ?: return false

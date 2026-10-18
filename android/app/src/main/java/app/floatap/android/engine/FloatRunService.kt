@@ -264,9 +264,15 @@ class FloatRunService : Service() {
             }
             overlay?.flash(current.x, current.y)
             val ok = ClickBridge.tap(current.x, current.y, runId)
-            if (!ok || !ClickBridge.gate.allows(runId)) {
-                stopRun(StopReason.PERMISSION, cancelLoop = false)
-                return
+            if (!ClickBridge.gate.allows(runId)) return
+            if (RunBus.phase.value != RunPhase.RUNNING) continue
+            if (!ok) {
+                if (!isAccessibilityEnabled()) {
+                    stopRun(StopReason.PERMISSION, cancelLoop = false)
+                    return
+                }
+                delay(150)
+                continue
             }
             val first = progress.firstClickElapsed ?: SystemClock.elapsedRealtime()
             val clicks = progress.clicks + 1
@@ -314,6 +320,17 @@ class FloatRunService : Service() {
                 else -> return
             }
         }
+    }
+
+    private fun onOutsideTouch(event: android.view.MotionEvent) {
+        if (!RunBus.pauseOnUserTouch) return
+        val phase = RunBus.phase.value
+        if (phase != RunPhase.RUNNING && phase != RunPhase.ARMED) return
+        if (event.flags and 0x800 != 0) return
+        val touchedAt = event.eventTime
+        if (touchedAt in ClickBridge.ownGestureStartedAt..ClickBridge.ownGestureUntil) return
+        if (System.currentTimeMillis() < RunBus.ignoreUserTouchUntil) return
+        pauseInternal()
     }
 
     private fun pauseInternal() {
@@ -371,6 +388,7 @@ class FloatRunService : Service() {
                 if (id == 0L) windows().showNote("先选择一份作业") else beginRun(id)
             }
             created.onPause = { pauseInternal() }
+            created.onOutsideTouch = { event -> onOutsideTouch(event) }
             created.onResume = { resumeInternal() }
             created.onStop = { stopRun(StopReason.USER) }
             created.onOpenApp = { openEditor(Prefs(this).lastJobId) }

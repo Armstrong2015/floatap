@@ -36,6 +36,7 @@ class ScreenOverlay(private val context: Context) {
     var onSelectJob: (Long, String) -> Unit = { _, _ -> }
     var onPick: (x: Int, y: Int) -> Unit = { _, _ -> }
     var onCancelPick: () -> Unit = {}
+    var onOutsideTouch: (MotionEvent) -> Unit = {}
 
     fun showBall(phase: RunPhase) {
         if (ball == null) {
@@ -43,6 +44,9 @@ class ScreenOverlay(private val context: Context) {
             val view = View(context)
             view.background = circle("#0F766E")
             val params = overlayParams(size, size)
+            params.flags = params.flags or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
             params.gravity = Gravity.TOP or Gravity.START
             params.x = 0
             params.y = (context.resources.displayMetrics.heightPixels * 0.4f).toInt()
@@ -302,6 +306,10 @@ class ScreenOverlay(private val context: Context) {
                         view.post { onBallTap(params, size) }
                     }
                     true
+                }
+                MotionEvent.ACTION_OUTSIDE -> {
+                    onOutsideTouch(event)
+                    false
                 }
                 else -> false
             }
