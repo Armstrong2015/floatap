@@ -10,7 +10,6 @@ import android.view.View
 import android.view.WindowManager
 import android.os.Build
 import android.os.SystemClock
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -23,6 +22,7 @@ class ScreenOverlay(private val context: Context) {
     private var ballParams: WindowManager.LayoutParams? = null
     private var menu: View? = null
     private var picker: View? = null
+    private var pickChrome: View? = null
     private var note: View? = null
     private var menuReadyAt = 0L
 
@@ -92,54 +92,137 @@ class ScreenOverlay(private val context: Context) {
     fun hideAll() {
         hideMenu()
         hideNote()
+        hidePicker()
         ball?.let { runCatching { wm.removeView(it) } }
         ball = null
         ballParams = null
-        hidePicker()
     }
 
     fun showPicker() {
         hidePicker()
-        val root = FrameLayout(context)
+        hideMenu()
         val dim = View(context)
-        dim.setBackgroundColor(0x33000000)
-        root.addView(dim, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT,
-        ))
+        dim.setBackgroundColor(0x22000000)
         dim.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 onPick(event.rawX.toInt(), event.rawY.toInt())
             }
             true
         }
-        val bar = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(0xF0141A1F.toInt())
-            val nav = systemBarPx("navigation_bar_height")
-            setPadding(24, 24, 24, 24 + nav)
-            isClickable = true
-        }
-        val label = TextView(context).apply {
-            text = "点按要记录的位置"
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 16f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val cancel = chip("取消", selected = false) { onCancelPick() }
-        bar.addView(label)
-        bar.addView(cancel)
-        root.addView(bar, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM,
-        ))
         val params = overlayParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
         )
-        wm.addView(root, params)
-        picker = root
+        wm.addView(dim, params)
+        picker = dim
+        showPickChrome()
+    }
+
+    private fun showPickChrome() {
+        hidePickChrome(restoreBall = false)
+        val density = context.resources.displayMetrics.density
+        val anchor = ballParams
+        ball?.takeIf { it.isAttachedToWindow }?.let { runCatching { wm.removeView(it) } }
+        val cancel = TextView(context).apply {
+            text = "取消选点"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setPadding(32, 20, 32, 20)
+            background = roundedRect(0x33FFFFFF)
+        }
+        val handle = View(context).apply {
+            val side = (36 * density).toInt()
+            layoutParams = LinearLayout.LayoutParams(side, side).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                marginEnd = (8 * density).toInt()
+            }
+            background = circle("#0F766E")
+        }
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val pad = (8 * density).toInt()
+            setPadding(pad, pad, pad, pad)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 18 * density
+                setColor(0xCC1B242C.toInt())
+                setStroke((1 * density).toInt().coerceAtLeast(1), 0x55FFFFFF)
+            }
+            addView(handle)
+            addView(cancel)
+        }
+        val params = overlayParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = anchor?.x ?: 0
+        params.y = anchor?.y ?: (context.resources.displayMetrics.heightPixels * 0.4f).toInt()
+        attachPickDrag(row, params, cancel)
+        wm.addView(row, params)
+        pickChrome = row
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun attachPickDrag(view: View, params: WindowManager.LayoutParams, cancel: View) {
+        var downX = 0f
+        var downY = 0f
+        var startX = 0
+        var startY = 0
+        var dragging = false
+        val threshold = 8 * context.resources.displayMetrics.density
+        view.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragging = false
+                    downX = event.rawX
+                    downY = event.rawY
+                    startX = params.x
+                    startY = params.y
+                    app.floatap.android.engine.RunBus.ignoreUserTouchUntil =
+                        System.currentTimeMillis() + 700
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - downX
+                    val dy = event.rawY - downY
+                    if (hypot(dx, dy) > threshold) dragging = true
+                    if (dragging) {
+                        val screen = context.readDisplay()
+                        val width = view.width.takeIf { it > 0 } ?: 0
+                        val height = view.height.takeIf { it > 0 } ?: 0
+                        params.x = (startX + dx.toInt()).coerceIn(0, (screen.width - width).coerceAtLeast(0))
+                        params.y = (startY + dy.toInt()).coerceIn(0, (screen.height - height).coerceAtLeast(0))
+                        wm.updateViewLayout(view, params)
+                        ballParams?.let { anchor ->
+                            anchor.x = params.x
+                            anchor.y = params.y
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val insideCancel = event.x.toInt() in cancel.left..cancel.right &&
+                        event.y.toInt() in cancel.top..cancel.bottom
+                    if (!dragging && insideCancel) onCancelPick()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun hidePickChrome(restoreBall: Boolean = true) {
+        val chrome = pickChrome
+        pickChrome = null
+        chrome?.let { runCatching { wm.removeView(it) } }
+        val anchor = ballParams
+        val floating = ball
+        if (restoreBall && floating != null && !floating.isAttachedToWindow && anchor != null) {
+            runCatching { wm.addView(floating, anchor) }
+        }
     }
 
     fun flash(x: Int, y: Int) {
@@ -168,6 +251,7 @@ class ScreenOverlay(private val context: Context) {
     }
 
     fun hidePicker() {
+        hidePickChrome()
         picker?.let { runCatching { wm.removeView(it) } }
         picker = null
     }
@@ -252,11 +336,10 @@ class ScreenOverlay(private val context: Context) {
     ) {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
             addButton(primary, selected = false) { hideMenu(); primaryAction() }
             addButton("停止", selected = false) { hideMenu(); onStop() }
         }
-        placeMenu(row, params, size)
+        placeMenu(glassPanel(row), params, size)
     }
 
     fun showIdleMenu(jobs: List<Pair<Long, String>>, selectedId: Long) {
@@ -264,14 +347,12 @@ class ScreenOverlay(private val context: Context) {
         val size = ball?.width?.takeIf { it > 0 } ?: (56 * context.resources.displayMetrics.density).toInt()
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
         if (jobs.isEmpty()) {
             column.addView(TextView(context).apply {
                 text = "还没有作业，选点会新建一份"
                 setTextColor(0xFFD0D7DE.toInt())
                 textSize = 14f
-                background = roundedRect(0xF0141A1F.toInt())
                 setPadding(32, 20, 32, 20)
                 layoutParams = chipLayout()
             })
@@ -287,14 +368,14 @@ class ScreenOverlay(private val context: Context) {
             val rowHeight = (72 * context.resources.displayMetrics.density).toInt()
             val height = (jobs.size * rowHeight).coerceAtMost((240 * context.resources.displayMetrics.density).toInt())
             column.addView(scroll, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 height,
             ))
         }
         column.addButton("选点", selected = false) { hideMenu(); onPickRequest() }
         column.addButton("开始", selected = false) { hideMenu(); onStart() }
         column.addButton("打开", selected = false) { hideMenu(); onOpenApp() }
-        placeMenu(column, anchor, size)
+        placeMenu(glassPanel(column), anchor, size)
     }
 
     private fun placeMenu(content: View, anchor: WindowManager.LayoutParams, ballSize: Int) {
@@ -305,7 +386,10 @@ class ScreenOverlay(private val context: Context) {
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
         params.gravity = Gravity.TOP or Gravity.START
-        val menuWidth = (200 * context.resources.displayMetrics.density).toInt()
+        val menuWidth = (220 * context.resources.displayMetrics.density).toInt()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            params.blurBehindRadius = (28 * context.resources.displayMetrics.density).toInt()
+        }
         params.x = if (anchor.x + ballSize + menuWidth > screen.width) {
             (anchor.x - menuWidth).coerceAtLeast(0)
         } else {
@@ -328,7 +412,7 @@ class ScreenOverlay(private val context: Context) {
             maxWidth = (200 * context.resources.displayMetrics.density).toInt()
             minWidth = (88 * context.resources.displayMetrics.density).toInt()
             setPadding(32, 20, 32, 20)
-            background = roundedRect(if (selected) 0xFF1F6B4A.toInt() else 0xF0141A1F.toInt())
+            background = roundedRect(if (selected) 0xFF1F6B4A.toInt() else 0x33FFFFFF)
             layoutParams = chipLayout()
             isClickable = true
             setOnClickListener {
@@ -339,11 +423,25 @@ class ScreenOverlay(private val context: Context) {
     }
 
     private fun chipLayout(): LinearLayout.LayoutParams {
-        val gap = (6 * context.resources.displayMetrics.density).toInt()
+        val gap = (4 * context.resources.displayMetrics.density).toInt()
         return LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
         ).apply { setMargins(gap, gap, gap, gap) }
+    }
+
+    private fun glassPanel(content: LinearLayout): LinearLayout {
+        val density = context.resources.displayMetrics.density
+        val pad = (8 * density).toInt()
+        content.setPadding(pad, pad, pad, pad)
+        content.minimumWidth = (168 * density).toInt()
+        content.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 18 * density
+            setColor(0xCC1B242C.toInt())
+            setStroke((1 * density).toInt().coerceAtLeast(1), 0x55FFFFFF)
+        }
+        return content
     }
 
     private fun roundedRect(color: Int): GradientDrawable {
@@ -356,7 +454,12 @@ class ScreenOverlay(private val context: Context) {
     }
 
     private fun LinearLayout.addButton(label: String, selected: Boolean, click: () -> Unit) {
-        addView(chip(label, selected, click))
+        val view = chip(label, selected, click)
+        val params = view.layoutParams as LinearLayout.LayoutParams
+        if (orientation == LinearLayout.HORIZONTAL) {
+            params.width = LinearLayout.LayoutParams.WRAP_CONTENT
+        }
+        addView(view, params)
     }
 
     private fun circle(color: String): GradientDrawable {
