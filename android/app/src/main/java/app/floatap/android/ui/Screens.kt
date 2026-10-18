@@ -1,6 +1,7 @@
 package app.floatap.android.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -29,6 +30,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -131,6 +133,12 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
     val context = LocalContext.current
     val vm: EditViewModel = viewModel(key = "edit-$jobId", factory = EditViewModel.factory(jobId))
     val ui = vm.state
+    val collapse by RunBus.collapseHost.collectAsState()
+    LaunchedEffect(collapse) {
+        if (!collapse) return@LaunchedEffect
+        RunBus.collapseHost.value = false
+        (context as? Activity)?.moveTaskToBack(true)
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -165,18 +173,16 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
             FilledTonalButton(onClick = {
                 if (!context.canDrawOverlay()) {
                     vm.update { it.copy(error = "先打开悬浮窗权限") }
-                } else {
-                    if (vm.savedId() != 0L) {
-                        Prefs(context).lastJobId = vm.savedId()
-                        Prefs(context).lastJobName = ui.name.trim()
-                    }
-                    FloatRunService.showBall(context)
+                    return@FilledTonalButton
+                }
+                vm.save(allowMissingPoint = true) {
                     vm.update {
                         it.copy(
                             error = null,
-                            warning = "到要点的应用后，点圆点再点「选点」。坐标会直接记到当前作业，不会打开这个页面。",
+                            warning = "已切换到这份作业。打开要点的应用，点圆点，再点「选点」。",
                         )
                     }
+                    FloatRunService.showBall(context, collapse = true)
                 }
             }) { Text("准备选点") }
             OutlinedTextField(

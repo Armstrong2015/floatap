@@ -27,6 +27,7 @@ data class JobDraft(
     val pauseOnUserTouch: Boolean,
     val existingCount: Int,
     val isNew: Boolean,
+    val allowMissingPoint: Boolean = false,
 )
 
 data class CheckedDraft(
@@ -43,7 +44,7 @@ fun checkDraft(draft: JobDraft): CheckedDraft {
     val issue = when {
         draft.isNew && draft.existingCount >= MAX_JOBS -> DraftIssue.TOO_MANY
         draft.name.isBlank() -> DraftIssue.NAME_EMPTY
-        draft.x < 0 || draft.y < 0 || draft.displayWidth <= 0 || draft.displayHeight <= 0 -> DraftIssue.NO_POINT
+        !draft.allowMissingPoint && (draft.x < 0 || draft.y < 0 || draft.displayWidth <= 0 || draft.displayHeight <= 0) -> DraftIssue.NO_POINT
         draft.intervalMs < 0 || draft.intervalMs > MAX_INTERVAL_MS -> DraftIssue.INTERVAL
         draft.countdownSec !in 0..10 -> DraftIssue.COUNTDOWN
         durationMs == null && draft.clickLimit == null -> DraftIssue.NO_STOP

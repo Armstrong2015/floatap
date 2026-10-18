@@ -58,6 +58,9 @@ class FloatRunService : Service() {
                 ACTION_SHOW_BALL -> {
                     promote("点屏幕边缘的圆点，可以选点或停止")
                     showBall()
+                    if (intent.getBooleanExtra(EXTRA_COLLAPSE, false)) {
+                        RunBus.collapseHost.value = true
+                    }
                 }
                 else -> Unit
             }
@@ -478,6 +481,7 @@ class FloatRunService : Service() {
         private const val ACTION_PICK = "app.floatap.android.PICK"
         private const val ACTION_SHOW_BALL = "app.floatap.android.BALL"
         private const val EXTRA_JOB_ID = "job_id"
+        private const val EXTRA_COLLAPSE = "collapse"
         private const val TAG = "Floatap"
 
         fun startJob(context: Context, jobId: Long) {
@@ -496,8 +500,10 @@ class FloatRunService : Service() {
         fun resume(context: Context) = send(context, ACTION_RESUME)
         fun stop(context: Context) = send(context, ACTION_STOP)
 
-        fun showBall(context: Context) {
-            val intent = Intent(context, FloatRunService::class.java).setAction(ACTION_SHOW_BALL)
+        fun showBall(context: Context, collapse: Boolean = false) {
+            val intent = Intent(context, FloatRunService::class.java)
+                .setAction(ACTION_SHOW_BALL)
+                .putExtra(EXTRA_COLLAPSE, collapse)
             ContextCompat.startForegroundService(context, intent)
         }
 

@@ -15,4 +15,6 @@ object RunBus {
 
     @Volatile
     var ignoreUserTouchUntil: Long = 0L
+
+    val collapseHost = MutableStateFlow(false)
 }

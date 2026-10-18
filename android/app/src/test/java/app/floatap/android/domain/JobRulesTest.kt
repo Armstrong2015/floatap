@@ -21,6 +21,12 @@ class JobRulesTest {
     }
 
     @Test
+    fun missingPointIsKeptWhenPreparingToPick() {
+        val checked = checkDraft(sample(x = -1).copy(allowMissingPoint = true))
+        assertNull(checked.issue)
+    }
+
+    @Test
     fun missingStopIsRejected() {
         val checked = checkDraft(sample(durationSec = null, clickLimit = null))
         assertEquals(DraftIssue.NO_STOP, checked.issue)

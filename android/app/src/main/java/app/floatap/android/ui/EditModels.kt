@@ -109,7 +109,7 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
         state = block(state)
     }
 
-    fun save(onSaved: (Long) -> Unit) {
+    fun save(allowMissingPoint: Boolean = false, onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch {
             val ui = state
             val checked = checkDraft(
@@ -127,6 +127,7 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                     pauseOnUserTouch = ui.pauseOnTouch,
                     existingCount = repository.count(),
                     isNew = currentId == 0L,
+                    allowMissingPoint = allowMissingPoint,
                 ),
             )
             if (checked.issue != null) {
