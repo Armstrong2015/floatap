@@ -13,13 +13,28 @@ android {
         applicationId = "app.floatap.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    val keystorePath = System.getenv("FLOATAP_KEYSTORE")
+    signingConfigs {
+        if (!keystorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("FLOATAP_STORE_PASSWORD")
+                keyAlias = System.getenv("FLOATAP_KEY_ALIAS") ?: "floatap"
+                keyPassword = System.getenv("FLOATAP_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (!keystorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -39,6 +54,10 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    lint {
+        checkReleaseBuilds = false
     }
 
     packaging {

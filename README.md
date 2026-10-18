@@ -5,12 +5,12 @@
 在自己的安卓手机上，悬浮选定位置，按间隔、定时或顺序把点击做完。
 
 [![平台](https://img.shields.io/badge/平台-Android_8.0+-3DDC84?style=flat-square&logo=android&logoColor=white)](docs/03-产品设计开发文档.md)
-[![阶段](https://img.shields.io/badge/阶段-M1_开发中-1f6feb?style=flat-square)](android)
+[![版本](https://img.shields.io/badge/版本-1.0.0-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/latest)
 [![APK](https://img.shields.io/github/actions/workflow/status/Armstrong2015/floatap/build-apk.yml?style=flat-square&label=APK)](https://github.com/Armstrong2015/floatap/actions)
 [![桌面端](https://img.shields.io/badge/桌面端-Windows_后置-8b949e?style=flat-square&logo=windows&logoColor=white)](docs/01-应用蓝皮书.md#11-路线图)
 [![网络](https://img.shields.io/badge/网络-首期不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
 
-安卓工程在 [`android`](android)。M1 是单点连点：选点、固定间隔、持续一段时间后停止。
+安卓工程在 [`android`](android)。1.0.0 是第一版，只做单点连点：选点、固定间隔、持续一段时间或到达次数后停止。定时、多点和画面匹配留到后面的版本。
 
 </div>
 
@@ -26,11 +26,13 @@ flowchart LR
 
 点的位置由人指定。浮序不登录账号、不填写支付信息、不替用户下单。
 
-## 调试 APK
+## 安装
 
-推送到 `main` 后，GitHub Actions 会编译一个 **debug APK**。包不在仓库文件列表里，也不在 Releases。打开 [Actions](https://github.com/Armstrong2015/floatap/actions)，点进最新一次成功的 **Build APK**，页面最下方 **Artifacts** 里下载 `floatap-debug`。第一次运行失败了，没有打出包；修好流水线后的下一次成功运行才会出现这个附件。
+正式包在 [Releases](https://github.com/Armstrong2015/floatap/releases) 里，文件名是 `floatap-1.0.0.apk`。这是签名过的正式版，不是调试包。
 
-这是调试签名，用来装到自己的手机上看选点、间隔和停止。它不是应用商店的上架包。手机需要允许安装未知来源应用。如果提示签名不一致，先卸掉旧版本再装。
+手机需要允许安装未知来源应用。如果之前装过调试包，要先卸载再装，两套签名不能互相覆盖。装好后重新打开悬浮窗和辅助功能。
+
+GitHub Actions 里的 `floatap-debug` 只用于开发中的调试，不要把它当成正式版。
 
 ## 文档
 
@@ -71,8 +73,8 @@ flowchart LR
   classDef done fill:#1f6feb,stroke:#1f6feb,color:#ffffff
   classDef next fill:#9a6700,stroke:#9a6700,color:#ffffff
   classDef later fill:#6e7781,stroke:#6e7781,color:#ffffff
-  class M0 done
-  class M1,M2 next
+  class M0,M1 done
+  class M2 next
   class M3,M4,M5 later
 ```
 
