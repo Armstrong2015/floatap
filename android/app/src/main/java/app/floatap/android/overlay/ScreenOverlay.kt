@@ -252,8 +252,7 @@ class ScreenOverlay(private val context: Context) {
     ) {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(0xF0141A1F.toInt())
-            setPadding(8, 8, 8, 8)
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
             addButton(primary, selected = false) { hideMenu(); primaryAction() }
             addButton("停止", selected = false) { hideMenu(); onStop() }
         }
@@ -265,15 +264,16 @@ class ScreenOverlay(private val context: Context) {
         val size = ball?.width?.takeIf { it > 0 } ?: (56 * context.resources.displayMetrics.density).toInt()
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xF0141A1F.toInt())
-            setPadding(8, 8, 8, 8)
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
         if (jobs.isEmpty()) {
             column.addView(TextView(context).apply {
                 text = "还没有作业，选点会新建一份"
                 setTextColor(0xFFD0D7DE.toInt())
                 textSize = 14f
-                setPadding(32, 16, 32, 8)
+                background = roundedRect(0xF0141A1F.toInt())
+                setPadding(32, 20, 32, 20)
+                layoutParams = chipLayout()
             })
         } else {
             val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -284,7 +284,7 @@ class ScreenOverlay(private val context: Context) {
                 }
             }
             val scroll = ScrollView(context).apply { addView(list) }
-            val rowHeight = (52 * context.resources.displayMetrics.density).toInt()
+            val rowHeight = (72 * context.resources.displayMetrics.density).toInt()
             val height = (jobs.size * rowHeight).coerceAtMost((240 * context.resources.displayMetrics.density).toInt())
             column.addView(scroll, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -322,16 +322,36 @@ class ScreenOverlay(private val context: Context) {
             text = label
             setTextColor(android.graphics.Color.WHITE)
             textSize = 16f
+            gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             maxWidth = (200 * context.resources.displayMetrics.density).toInt()
+            minWidth = (88 * context.resources.displayMetrics.density).toInt()
             setPadding(32, 20, 32, 20)
-            if (selected) setBackgroundColor(0xFF1F6B4A.toInt())
+            background = roundedRect(if (selected) 0xFF1F6B4A.toInt() else 0xF0141A1F.toInt())
+            layoutParams = chipLayout()
             isClickable = true
             setOnClickListener {
                 if (SystemClock.uptimeMillis() < menuReadyAt) return@setOnClickListener
                 click()
             }
+        }
+    }
+
+    private fun chipLayout(): LinearLayout.LayoutParams {
+        val gap = (6 * context.resources.displayMetrics.density).toInt()
+        return LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply { setMargins(gap, gap, gap, gap) }
+    }
+
+    private fun roundedRect(color: Int): GradientDrawable {
+        val radius = 8 * context.resources.displayMetrics.density
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(color)
         }
     }
 
