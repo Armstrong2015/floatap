@@ -28,7 +28,7 @@ flowchart LR
 
 ## 安装
 
-正式包在 [Releases](https://github.com/Armstrong2015/floatap/releases) 里，文件名是 `floatap-1.0.0.apk`。这是签名过的正式版，不是调试包。
+正式包在 [Releases](https://github.com/Armstrong2015/floatap/releases) 里，文件名是 `floatap-1.0.0.apk`。这是签名过的正式版，不是调试包。功能和操作步骤写在 [1.0.0 发布说明](docs/releases/v1.0.0.md)。
 
 手机需要允许安装未知来源应用。如果之前装过调试包，要先卸载再装，两套签名不能互相覆盖。装好后重新打开悬浮窗和辅助功能。
 
