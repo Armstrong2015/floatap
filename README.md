@@ -5,12 +5,12 @@
 在自己的安卓手机上，悬浮选定位置，按间隔、定时或顺序把点击做完。
 
 [![平台](https://img.shields.io/badge/平台-Android_8.0+-3DDC84?style=flat-square&logo=android&logoColor=white)](docs/03-产品设计开发文档.md)
-[![版本](https://img.shields.io/badge/版本-1.1.0-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/latest)
+[![版本](https://img.shields.io/badge/版本-1.1.2-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/latest)
 [![APK](https://img.shields.io/github/actions/workflow/status/Armstrong2015/floatap/build-apk.yml?style=flat-square&label=APK)](https://github.com/Armstrong2015/floatap/actions)
 [![桌面端](https://img.shields.io/badge/桌面端-Windows_后置-8b949e?style=flat-square&logo=windows&logoColor=white)](docs/01-应用蓝皮书.md#11-路线图)
 [![网络](https://img.shields.io/badge/网络-首期不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
 
-安卓工程在 [`android`](android)。当前正式版是 1.1.0：单点连点，间隔可以固定，也可以在最小和最大之间随机。定时、多点和画面匹配留到后面的版本。
+安卓工程在 [`android`](android)。当前正式版是 1.1.2：单点连点，间隔可以固定，也可以在最小和最大之间随机。定时、多点和画面匹配留到后面的版本。
 
 </div>
 
@@ -28,7 +28,7 @@ flowchart LR
 
 ## 安装
 
-当前正式包是 [floatap-1.1.0.apk](https://github.com/Armstrong2015/floatap/releases/tag/v1.1.0)。打开「随机间隔」后填写最大间隔，每次等待会在两个时间之间取值。1.0.0 的操作步骤仍写在 [发布说明](docs/releases/v1.0.0.md)。
+当前正式包是 [floatap-1.1.2.apk](https://github.com/Armstrong2015/floatap/releases/tag/v1.1.2)。打开「随机间隔」后填写最大间隔，每次等待会在两个时间之间取值。从最近任务划掉后，辅助功能保持开启。点菜单以外的空白处会收起菜单，选点时不会。1.0.0 的操作步骤仍写在 [发布说明](docs/releases/v1.0.0.md)。
 
 手机需要允许安装未知来源应用。如果之前装过调试包，要先卸载再装，两套签名不能互相覆盖。装好后重新打开悬浮窗和辅助功能。
 
