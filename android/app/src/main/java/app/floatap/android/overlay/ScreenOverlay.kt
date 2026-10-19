@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import app.floatap.android.a11y.ClickBridge
 import app.floatap.android.domain.RunPhase
 import kotlin.math.hypot
 
@@ -399,26 +400,41 @@ class ScreenOverlay(private val context: Context) {
         val panelY = anchor.y.coerceIn(0, (screen.height - ballSize).coerceAtLeast(0))
         content.isClickable = true
         val host = object : FrameLayout(context) {
-            override fun onTouchEvent(event: MotionEvent): Boolean {
-                if (event.action == MotionEvent.ACTION_UP && picker == null) hideMenu()
+            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                if (event.action != MotionEvent.ACTION_OUTSIDE) return super.dispatchTouchEvent(event)
+                val now = SystemClock.uptimeMillis()
+                if (picker == null && now >= menuReadyAt && !isOwnClick(event)) hideMenu()
                 return true
             }
         }
         host.addView(content, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
-        ).apply {
-            leftMargin = panelX
-            topMargin = panelY
-        })
+        ))
         val params = overlayParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
         )
+        params.flags = params.flags or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
         params.gravity = Gravity.TOP or Gravity.START
+        params.x = panelX
+        params.y = panelY
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            params.blurBehindRadius = (28 * context.resources.displayMetrics.density).toInt()
+        }
         wm.addView(host, params)
         menu = host
         menuReadyAt = SystemClock.uptimeMillis() + 400
+    }
+
+    private fun isOwnClick(event: MotionEvent): Boolean {
+        val start = ClickBridge.ownGestureStartedAt
+        val end = ClickBridge.ownGestureUntil + 250
+        if (start == 0L) return false
+        val now = SystemClock.uptimeMillis()
+        return now in start..end || event.eventTime in start..end
     }
 
     private fun chip(label: String, selected: Boolean, click: () -> Unit): TextView {
