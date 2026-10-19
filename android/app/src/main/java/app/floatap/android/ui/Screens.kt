@@ -147,7 +147,6 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 vm.consumePick()
-                vm.refreshPoint()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -175,43 +174,41 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                 label = { Text("名称") },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text(
-                if (ui.x < 0) "还没有选点" else "坐标 ${ui.x}, ${ui.y} · ${ui.displayWidth}×${ui.displayHeight}",
-            )
-            FilledTonalButton(onClick = {
-                if (!context.canDrawOverlay()) {
-                    vm.update { it.copy(error = "先打开悬浮窗权限") }
-                    return@FilledTonalButton
-                }
-                vm.save(allowMissingPoint = true) {
-                    vm.update {
-                        it.copy(
-                            error = null,
-                            warning = "已切换到这份作业。打开要点的应用，点圆点，再点「选点」。",
-                        )
-                    }
-                    FloatRunService.showBall(context, collapse = true)
-                }
-            }) { Text("准备选点") }
-            OutlinedTextField(
-                value = ui.intervalText,
-                onValueChange = { value -> vm.update { it.copy(intervalText = value.filter(Char::isDigit)) } },
-                label = { Text(if (ui.randomInterval) "最小间隔（毫秒）" else "间隔（毫秒）") },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("随机间隔")
-                Switch(checked = ui.randomInterval, onCheckedChange = { checked -> vm.update { it.copy(randomInterval = checked) } })
-            }
-            if (ui.randomInterval) {
-                OutlinedTextField(
-                    value = ui.intervalMaxText,
-                    onValueChange = { value -> vm.update { it.copy(intervalMaxText = value.filter(Char::isDigit)) } },
-                    label = { Text("最大间隔（毫秒）") },
-                    supportingText = { Text("每次等待在这两个时间之间随机取值") },
-                    modifier = Modifier.fillMaxWidth(),
+            Text("按顺序点击下面这些步骤，一轮结束后从头再来。")
+            ui.steps.forEachIndexed { index, step ->
+                StepCard(
+                    index = index,
+                    count = ui.steps.size,
+                    step = step,
+                    onChange = { next -> vm.updateStep(index) { next } },
+                    onPick = {
+                        if (!context.canDrawOverlay()) {
+                            vm.update { it.copy(error = "先打开悬浮窗权限") }
+                            return@StepCard
+                        }
+                        vm.markPicking(index)
+                        vm.save(allowMissingPoint = true) {
+                            vm.update {
+                                it.copy(
+                                    error = null,
+                                    warning = "去选第 ${index + 1} 步。打开要点的应用，点圆点，再点「选点」。",
+                                )
+                            }
+                            FloatRunService.showBall(context, collapse = true)
+                        }
+                    },
+                    onMove = { delta -> vm.moveStep(index, delta) },
+                    onDelete = { vm.deleteStep(index) },
                 )
             }
+            FilledTonalButton(onClick = { vm.addStep() }, modifier = Modifier.fillMaxWidth()) { Text("添加一步") }
+            OutlinedTextField(
+                value = ui.loopText,
+                onValueChange = { value -> vm.update { it.copy(loopText = value.filter(Char::isDigit)) } },
+                label = { Text("循环次数，留空表示不限") },
+                supportingText = { Text("不限次数时，要填写持续时长或点击次数") },
+                modifier = Modifier.fillMaxWidth(),
+            )
             OutlinedTextField(
                 value = ui.durationText,
                 onValueChange = { value -> vm.update { it.copy(durationText = value.filter(Char::isDigit)) } },
@@ -255,6 +252,64 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(if (ui.name.isBlank()) "开始这一份" else "开始「${ui.name.trim()}」") }
+        }
+    }
+}
+
+@Composable
+private fun StepCard(
+    index: Int,
+    count: Int,
+    step: StepUi,
+    onChange: (StepUi) -> Unit,
+    onPick: () -> Unit,
+    onMove: (Int) -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("第 ${index + 1} 步", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = step.name,
+                onValueChange = { value -> onChange(step.copy(name = value)) },
+                label = { Text("步骤名称") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                if (step.x < 0) "还没有选点" else "坐标 ${step.x}, ${step.y} · ${step.displayWidth}×${step.displayHeight}",
+            )
+            FilledTonalButton(onClick = onPick) { Text("选点") }
+            OutlinedTextField(
+                value = step.intervalText,
+                onValueChange = { value -> onChange(step.copy(intervalText = value.filter(Char::isDigit))) },
+                label = { Text(if (step.randomInterval) "最小间隔（毫秒）" else "间隔（毫秒）") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("随机间隔")
+                Switch(
+                    checked = step.randomInterval,
+                    onCheckedChange = { checked -> onChange(step.copy(randomInterval = checked)) },
+                )
+            }
+            if (step.randomInterval) {
+                OutlinedTextField(
+                    value = step.intervalMaxText,
+                    onValueChange = { value -> onChange(step.copy(intervalMaxText = value.filter(Char::isDigit))) },
+                    label = { Text("最大间隔（毫秒）") },
+                    supportingText = { Text("每次等待在这两个时间之间随机取值") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { onMove(-1) }, enabled = index > 0) { Text("上移") }
+                TextButton(onClick = { onMove(1) }, enabled = index < count - 1) { Text("下移") }
+                TextButton(onClick = onDelete, enabled = count > 1) { Text("删除") }
+            }
         }
     }
 }

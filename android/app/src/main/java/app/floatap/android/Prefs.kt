@@ -17,9 +17,14 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_LAST_JOB_NAME, "").orEmpty()
         set(value) = sp.edit().putString(KEY_LAST_JOB_NAME, value).apply()
 
+    var lastStepIndex: Int
+        get() = sp.getInt(KEY_LAST_STEP, 0)
+        set(value) = sp.edit().putInt(KEY_LAST_STEP, value).apply()
+
     companion object {
         private const val KEY_BOUNDARY = "boundary_accepted"
         private const val KEY_LAST_JOB = "last_job_id"
         private const val KEY_LAST_JOB_NAME = "last_job_name"
+        private const val KEY_LAST_STEP = "last_step_index"
     }
 }

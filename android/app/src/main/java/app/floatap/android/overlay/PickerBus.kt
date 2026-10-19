@@ -6,6 +6,7 @@ data class PickResult(
     val width: Int,
     val height: Int,
     val rotation: Int,
+    val stepIndex: Int = 0,
 )
 
 object PickerBus {

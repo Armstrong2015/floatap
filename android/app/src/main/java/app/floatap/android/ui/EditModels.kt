@@ -20,9 +20,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-data class EditUi(
-    val ready: Boolean = false,
-    val name: String = "",
+data class StepUi(
+    val name: String = "点击",
     val x: Int = -1,
     val y: Int = -1,
     val displayWidth: Int = 0,
@@ -31,6 +30,13 @@ data class EditUi(
     val intervalText: String = "500",
     val randomInterval: Boolean = false,
     val intervalMaxText: String = "",
+)
+
+data class EditUi(
+    val ready: Boolean = false,
+    val name: String = "",
+    val steps: List<StepUi> = listOf(StepUi()),
+    val loopText: String = "",
     val durationText: String = "60",
     val clickLimitText: String = "",
     val countdown: Int = 3,
@@ -38,6 +44,21 @@ data class EditUi(
     val error: String? = null,
     val warning: String? = null,
 )
+
+private fun Step.toUi(): StepUi {
+    val ranged = waitMaxMs > waitMinMs
+    return StepUi(
+        name = name,
+        x = x,
+        y = y,
+        displayWidth = displayWidth,
+        displayHeight = displayHeight,
+        rotation = rotation,
+        intervalText = waitMinMs.toString(),
+        randomInterval = ranged,
+        intervalMaxText = if (ranged) waitMaxMs.toString() else "",
+    )
+}
 
 class EditViewModel(app: Application, private val initialId: Long) : AndroidViewModel(app) {
     private val repository = (app as FloatApp).repository
@@ -57,19 +78,11 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                 if (job == null) {
                     state = state.copy(ready = true, error = "找不到这份作业")
                 } else {
-                    val step = job.steps.firstOrNull()
-                    val ranged = step != null && step.waitMaxMs > step.waitMinMs
                     state = EditUi(
                         ready = true,
                         name = job.name,
-                        x = step?.x ?: -1,
-                        y = step?.y ?: -1,
-                        displayWidth = step?.displayWidth ?: 0,
-                        displayHeight = step?.displayHeight ?: 0,
-                        rotation = step?.rotation ?: 0,
-                        intervalText = (step?.waitMinMs ?: 500L).toString(),
-                        randomInterval = ranged,
-                        intervalMaxText = if (ranged) step.waitMaxMs.toString() else "",
+                        steps = job.steps.map { it.toUi() }.ifEmpty { listOf(StepUi()) },
+                        loopText = job.loopLimit?.toString().orEmpty(),
                         durationText = job.durationMs?.div(1000)?.toString().orEmpty(),
                         clickLimitText = job.clickLimit?.toString().orEmpty(),
                         countdown = job.countdownSec,
@@ -83,32 +96,57 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
     fun consumePick() {
         val pick = PickerBus.pending ?: return
         PickerBus.pending = null
+        val index = pick.stepIndex
         state = state.copy(
-            x = pick.x,
-            y = pick.y,
-            displayWidth = pick.width,
-            displayHeight = pick.height,
-            rotation = pick.rotation,
+            steps = state.steps.mapIndexed { i, step ->
+                if (i != index) step else step.copy(
+                    x = pick.x,
+                    y = pick.y,
+                    displayWidth = pick.width,
+                    displayHeight = pick.height,
+                    rotation = pick.rotation,
+                )
+            },
             error = null,
         )
     }
 
     fun savedId(): Long = currentId
 
-    fun refreshPoint() {
-        val id = currentId
-        if (!state.ready || id == 0L) return
-        viewModelScope.launch {
-            val step = repository.get(id)?.steps?.firstOrNull() ?: return@launch
-            if (currentId != id) return@launch
-            state = state.copy(
-                x = step.x,
-                y = step.y,
-                displayWidth = step.displayWidth,
-                displayHeight = step.displayHeight,
-                rotation = step.rotation,
-            )
-        }
+    fun updateStep(index: Int, block: (StepUi) -> StepUi) {
+        state = state.copy(steps = state.steps.mapIndexed { i, step -> if (i == index) block(step) else step })
+    }
+
+    fun addStep() {
+        val previous = state.steps.lastOrNull() ?: StepUi()
+        state = state.copy(
+            steps = state.steps + previous.copy(
+                name = "点击${state.steps.size + 1}",
+                x = -1,
+                y = -1,
+                displayWidth = 0,
+                displayHeight = 0,
+                rotation = 0,
+            ),
+        )
+    }
+
+    fun moveStep(index: Int, delta: Int) {
+        val target = index + delta
+        val steps = state.steps.toMutableList()
+        if (index !in steps.indices || target !in steps.indices) return
+        val item = steps.removeAt(index)
+        steps.add(target, item)
+        state = state.copy(steps = steps)
+    }
+
+    fun deleteStep(index: Int) {
+        if (state.steps.size <= 1 || index !in state.steps.indices) return
+        state = state.copy(steps = state.steps.filterIndexed { i, _ -> i != index })
+    }
+
+    fun markPicking(index: Int) {
+        prefs.lastStepIndex = index
     }
 
     fun update(block: (EditUi) -> EditUi) {
@@ -121,13 +159,12 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
             val checked = checkDraft(
                 JobDraft(
                     name = ui.name.trim(),
-                    x = ui.x,
-                    y = ui.y,
-                    displayWidth = ui.displayWidth,
-                    displayHeight = ui.displayHeight,
-                    rotation = ui.rotation,
-                    intervalMs = ui.intervalText.toLongOrNull() ?: -1L,
-                    intervalMaxMs = if (ui.randomInterval) ui.intervalMaxText.toLongOrNull() ?: -1L else null,
+                    x = -1,
+                    y = -1,
+                    displayWidth = 0,
+                    displayHeight = 0,
+                    rotation = 0,
+                    intervalMs = 500,
                     durationSec = ui.durationText.toLongOrNull(),
                     clickLimit = ui.clickLimitText.toIntOrNull(),
                     countdownSec = ui.countdown,
@@ -135,32 +172,47 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                     existingCount = repository.count(),
                     isNew = currentId == 0L,
                     allowMissingPoint = allowMissingPoint,
+                    loopLimit = ui.loopText.toIntOrNull(),
+                    steps = ui.steps.map { step ->
+                        app.floatap.android.domain.StepDraft(
+                            name = step.name.trim(),
+                            x = step.x,
+                            y = step.y,
+                            displayWidth = step.displayWidth,
+                            displayHeight = step.displayHeight,
+                            rotation = step.rotation,
+                            intervalMs = step.intervalText.toLongOrNull() ?: -1L,
+                            intervalMaxMs = if (step.randomInterval) step.intervalMaxText.toLongOrNull() ?: -1L else null,
+                        )
+                    },
                 ),
             )
             if (checked.issue != null) {
-                state = ui.copy(error = checked.issue.message, warning = null)
+                state = ui.copy(error = checked.message(), warning = null)
                 return@launch
             }
             val id = repository.save(
                 Job(
                     id = currentId,
                     name = ui.name.trim(),
-                    steps = listOf(
+                    steps = ui.steps.mapIndexed { index, step ->
+                        val timing = checked.steps[index]
                         Step(
-                            order = 0,
-                            name = "点击",
-                            x = ui.x,
-                            y = ui.y,
-                            displayWidth = ui.displayWidth,
-                            displayHeight = ui.displayHeight,
-                            rotation = ui.rotation,
-                            waitMode = if (checked.intervalMaxMs > checked.intervalMs) WaitMode.RANGE else WaitMode.FIXED,
-                            waitMinMs = checked.intervalMs,
-                            waitMaxMs = checked.intervalMaxMs,
-                        ),
-                    ),
+                            order = index,
+                            name = timing.name,
+                            x = step.x,
+                            y = step.y,
+                            displayWidth = step.displayWidth,
+                            displayHeight = step.displayHeight,
+                            rotation = step.rotation,
+                            waitMode = if (timing.intervalMaxMs > timing.intervalMs) WaitMode.RANGE else WaitMode.FIXED,
+                            waitMinMs = timing.intervalMs,
+                            waitMaxMs = timing.intervalMaxMs,
+                        )
+                    },
                     durationMs = checked.durationMs,
                     clickLimit = ui.clickLimitText.toIntOrNull()?.takeIf { it > 0 },
+                    loopLimit = checked.loopLimit,
                     countdownSec = ui.countdown,
                     pauseOnUserTouch = ui.pauseOnTouch,
                 ),
@@ -168,10 +220,22 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
             currentId = id
             prefs.lastJobId = id
             prefs.lastJobName = ui.name.trim()
+            val adjustedAt = checked.steps.indexOfFirst { it.adjusted }
             state = ui.copy(
                 error = null,
-                warning = if (checked.intervalAdjusted) "已把间隔调整为 50 毫秒" else null,
-                intervalText = checked.intervalMs.toString(),
+                warning = when {
+                    !checked.intervalAdjusted -> null
+                    ui.steps.size == 1 -> "已把间隔调整为 50 毫秒"
+                    else -> "已把第 ${adjustedAt + 1} 步的间隔调整为 50 毫秒"
+                },
+                steps = ui.steps.mapIndexed { index, step ->
+                    val timing = checked.steps[index]
+                    step.copy(
+                        name = timing.name,
+                        intervalText = timing.intervalMs.toString(),
+                        intervalMaxText = if (step.randomInterval) timing.intervalMaxMs.toString() else "",
+                    )
+                },
             )
             onSaved(id)
         }

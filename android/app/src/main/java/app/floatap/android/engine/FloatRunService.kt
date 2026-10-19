@@ -153,7 +153,8 @@ class FloatRunService : Service() {
                     )
                     prefs.lastJobId = id
                     prefs.lastJobName = name
-                    rememberPick(x, y, display.width, display.height, display.rotation)
+                    prefs.lastStepIndex = 0
+                    rememberPick(x, y, display.width, display.height, display.rotation, 0)
                     windows().showNote("已新建「$name」并记下 $x, $y")
                     return@launch
                 }
@@ -164,7 +165,8 @@ class FloatRunService : Service() {
                 }
                 val steps = job.steps.toMutableList()
                 val point = pointStep(x, y, display.width, display.height, display.rotation)
-                if (steps.isEmpty()) steps += point else steps[0] = steps[0].copy(
+                val index = if (steps.isEmpty()) 0 else prefs.lastStepIndex.coerceIn(0, steps.lastIndex)
+                if (steps.isEmpty()) steps += point else steps[index] = steps[index].copy(
                     x = point.x,
                     y = point.y,
                     displayWidth = point.displayWidth,
@@ -174,8 +176,9 @@ class FloatRunService : Service() {
                 repository.save(job.copy(steps = steps))
                 prefs.lastJobId = job.id
                 prefs.lastJobName = job.name
-                rememberPick(x, y, display.width, display.height, display.rotation)
-                windows().showNote("已记下「${job.name}」$x, $y")
+                prefs.lastStepIndex = index
+                rememberPick(x, y, display.width, display.height, display.rotation, index)
+                windows().showNote("已记下「${job.name}」第 ${index + 1} 步 $x, $y")
             } catch (error: Exception) {
                 android.util.Log.e(TAG, "save pick failed", error)
                 windows().showNote("选点没有记下")
@@ -195,8 +198,8 @@ class FloatRunService : Service() {
         waitMaxMs = 500,
     )
 
-    private fun rememberPick(x: Int, y: Int, width: Int, height: Int, rotation: Int) {
-        PickerBus.pending = app.floatap.android.overlay.PickResult(x, y, width, height, rotation)
+    private fun rememberPick(x: Int, y: Int, width: Int, height: Int, rotation: Int, stepIndex: Int) {
+        PickerBus.pending = app.floatap.android.overlay.PickResult(x, y, width, height, rotation, stepIndex)
     }
 
     private fun beginRun(jobId: Long) {
@@ -265,7 +268,7 @@ class FloatRunService : Service() {
         while (RunBus.phase.value == RunPhase.RUNNING || RunBus.phase.value == RunPhase.PAUSED) {
             val current = job.steps[index]
             val wait = waitMillis(current.waitMinMs, current.waitMaxMs, waitRandom)
-            android.util.Log.i(TAG, "wait ${wait}ms")
+            android.util.Log.i(TAG, "step ${index + 1}/$stepCount wait ${wait}ms at ${current.x},${current.y}")
             holdWake(wait)
             waitReady(wait)
             if (RunBus.phase.value == RunPhase.PAUSED) continue
@@ -298,11 +301,12 @@ class FloatRunService : Service() {
             }
             val first = progress.firstClickElapsed ?: SystemClock.elapsedRealtime()
             val clicks = progress.clicks + 1
+            val clickedStep = index + 1
             val nextIndex = if (index + 1 < stepCount) index + 1 else 0
             val loops = if (nextIndex == 0) progress.loops + 1 else progress.loops
             progress = Progress(clicks, loops, first)
             index = nextIndex
-            notify("「${job.name}」已点击 $clicks 次")
+            notify("「${job.name}」第 $clickedStep 步，已点击 $clicks 次")
             val after = nextStop(
                 job.durationMs,
                 job.clickLimit,
@@ -403,6 +407,7 @@ class FloatRunService : Service() {
             created.onSelectJob = { id, name ->
                 Prefs(this).lastJobId = id
                 Prefs(this).lastJobName = name
+                Prefs(this).lastStepIndex = 0
                 showIdleMenu()
             }
             created.onStart = {
