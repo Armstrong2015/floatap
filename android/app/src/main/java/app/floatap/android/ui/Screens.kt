@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -268,7 +269,10 @@ fun SettingsScreen(onBack: () -> Unit) {
             navigationIcon = { TextButton(onClick = onBack) { Text("返回") } },
         )
     }) { padding ->
-        Column(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier.padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Text(if (context.canDrawOverlay()) "悬浮窗已开启" else "悬浮窗未开启")
             if (!context.canDrawOverlay()) {
                 Button(onClick = {
@@ -284,6 +288,20 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Button(onClick = {
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }) { Text("打开辅助功能设置") }
+            }
+            Text("从最近任务划掉浮序会关掉圆点和正在进行的点击。辅助功能保持开启，重新打开就能继续用。")
+            Text("如果在系统里强制停止浮序，或手机管家把浮序强行清掉，手机会关掉辅助功能。这是系统限制，浮序不能自己打开，需要再到这里开一次。")
+            val power = context.getSystemService(PowerManager::class.java)
+            val batteryFree = power.isIgnoringBatteryOptimizations(context.packageName)
+            Text(if (batteryFree) "已允许后台运行" else "后台运行还没放开，系统清理时更容易把辅助功能关掉")
+            if (!batteryFree) {
+                Button(onClick = {
+                    val intent = Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:${context.packageName}"),
+                    )
+                    context.startActivity(intent)
+                }) { Text("允许后台运行") }
             }
             Text(stringResource(R.string.boundary))
         }

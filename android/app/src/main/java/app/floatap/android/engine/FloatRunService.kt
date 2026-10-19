@@ -72,6 +72,23 @@ class FloatRunService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        ClickBridge.gate.close()
+        runJob?.cancel()
+        runJob = null
+        releaseWake()
+        setPhase(RunPhase.IDLE)
+        overlay?.hideAll()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         ClickBridge.gate.close()
         runJob?.cancel()
@@ -369,7 +386,8 @@ class FloatRunService : Service() {
             else -> "已停止"
         }
         RunBus.message.value = text
-        demote()
+        notify(text)
+        overlay?.updateBall(RunPhase.IDLE)
     }
 
     private fun setPhase(phase: RunPhase) {
@@ -440,11 +458,6 @@ class FloatRunService : Service() {
         windows()
     }
 
-    private fun demote() {
-        stopForeground(STOP_FOREGROUND_DETACH)
-        overlay?.updateBall(RunPhase.IDLE)
-    }
-
     private fun notify(text: String) {
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(NOTIFICATION_ID, buildNotification(text))
@@ -452,7 +465,10 @@ class FloatRunService : Service() {
 
     private fun ensureChannel() {
         val manager = getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(CHANNEL_ID, "作业运行", NotificationManager.IMPORTANCE_DEFAULT)
+        manager.deleteNotificationChannel("floatap-run")
+        val channel = NotificationChannel(CHANNEL_ID, "作业运行", NotificationManager.IMPORTANCE_LOW)
+        channel.setSound(null, null)
+        channel.enableVibration(false)
         manager.createNotificationChannel(channel)
     }
 
@@ -474,6 +490,8 @@ class FloatRunService : Service() {
             .setContentTitle("浮序")
             .setContentText(text)
             .setOngoing(true)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .addAction(0, "停止", stop)
             .build()
@@ -494,7 +512,7 @@ class FloatRunService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "floatap-run"
+        private const val CHANNEL_ID = "floatap-run-quiet"
         private const val NOTIFICATION_ID = 42
         private const val ACTION_START = "app.floatap.android.START"
         private const val ACTION_PAUSE = "app.floatap.android.PAUSE"

@@ -10,6 +10,7 @@ import android.view.View
 import android.view.WindowManager
 import android.os.Build
 import android.os.SystemClock
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -389,23 +390,34 @@ class ScreenOverlay(private val context: Context) {
     private fun placeMenu(content: View, anchor: WindowManager.LayoutParams, ballSize: Int) {
         hideMenu()
         val screen = context.readDisplay()
-        val params = overlayParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-        )
-        params.gravity = Gravity.TOP or Gravity.START
         val menuWidth = (220 * context.resources.displayMetrics.density).toInt()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            params.blurBehindRadius = (28 * context.resources.displayMetrics.density).toInt()
-        }
-        params.x = if (anchor.x + ballSize + menuWidth > screen.width) {
+        val panelX = if (anchor.x + ballSize + menuWidth > screen.width) {
             (anchor.x - menuWidth).coerceAtLeast(0)
         } else {
             anchor.x + ballSize
         }
-        params.y = anchor.y.coerceIn(0, (screen.height - ballSize).coerceAtLeast(0))
-        wm.addView(content, params)
-        menu = content
+        val panelY = anchor.y.coerceIn(0, (screen.height - ballSize).coerceAtLeast(0))
+        content.isClickable = true
+        val host = object : FrameLayout(context) {
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                if (event.action == MotionEvent.ACTION_UP && picker == null) hideMenu()
+                return true
+            }
+        }
+        host.addView(content, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+        ).apply {
+            leftMargin = panelX
+            topMargin = panelY
+        })
+        val params = overlayParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        wm.addView(host, params)
+        menu = host
         menuReadyAt = SystemClock.uptimeMillis() + 400
     }
 
