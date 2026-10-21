@@ -2,15 +2,15 @@
 
 # 浮序 Floatap
 
-在自己的安卓手机上，悬浮选定位置，按间隔、定时或顺序把点击做完。
+在自己的安卓手机或 Windows 电脑上，选定屏幕坐标，按间隔或顺序把点击做完。
 
-[![平台](https://img.shields.io/badge/平台-Android_8.0+-3DDC84?style=flat-square&logo=android&logoColor=white)](docs/03-产品设计开发文档.md)
-[![版本](https://img.shields.io/badge/版本-2.0.0-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/latest)
+[![平台](https://img.shields.io/badge/平台-Android_8.0+_·_Windows-3DDC84?style=flat-square&logo=android&logoColor=white)](docs/03-产品设计开发文档.md)
+[![安卓](https://img.shields.io/badge/安卓-2.0.0-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/tag/v2.0.0)
+[![Windows](https://img.shields.io/badge/Windows-1.0.0-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/Armstrong2015/floatap/releases/tag/v-windows-1.0.0)
 [![APK](https://img.shields.io/github/actions/workflow/status/Armstrong2015/floatap/build-apk.yml?style=flat-square&label=APK)](https://github.com/Armstrong2015/floatap/actions)
-[![桌面端](https://img.shields.io/badge/桌面端-Windows_后置-8b949e?style=flat-square&logo=windows&logoColor=white)](docs/01-应用蓝皮书.md#11-路线图)
-[![网络](https://img.shields.io/badge/网络-首期不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
+[![网络](https://img.shields.io/badge/网络-不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
 
-安卓工程在 [`android`](android)。当前正式版是 2.0.0：单点连点之外，支持多步顺序循环，每步可单独选点和设置点击前等待。定时开始、颜色条件和画面匹配留到后面的版本。
+安卓工程在 [`android`](android)，Windows 工程在 [`windows`](windows)。安卓正式版 2.0.0 支持多步顺序循环；Windows 正式版 1.0.0 共用同一套 `format: 1` 作业 JSON。定时开始、颜色条件和画面匹配留到后面的版本。
 
 </div>
 
@@ -28,11 +28,15 @@ flowchart LR
 
 ## 安装
 
-当前正式包是 [floatap-2.0.0.apk](https://github.com/Armstrong2015/floatap/releases/tag/v2.0.0)。多步作业按顺序点击，每步有自己的点击前等待；只有一步时行为与 1.1.2 相同。配置页选点后点一下即回编辑页。从最近任务划掉后，辅助功能保持开启。点菜单以外的空白处会收起菜单，再点悬浮球也可收起。说明见 [2.0.0 发布说明](docs/releases/v2.0.0.md)。
+### 安卓
 
-手机需要允许安装未知来源应用。如果之前装过调试包，要先卸载再装，两套签名不能互相覆盖。装好后重新打开悬浮窗和辅助功能。
+当前正式包是 [floatap-2.0.0.apk](https://github.com/Armstrong2015/floatap/releases/tag/v2.0.0)。多步作业按顺序点击，每步有自己的点击前等待；只有一步时行为与 1.1.2 相同。配置页选点后点一下即回编辑页。说明见 [2.0.0 发布说明](docs/releases/v2.0.0.md)。
 
-GitHub Actions 里的 `floatap-debug` 只用于开发中的调试，不要把它当成正式版。
+手机需要允许安装未知来源应用。如果之前装过调试包，要先卸载再装。装好后重新打开悬浮窗和辅助功能。
+
+### Windows
+
+当前正式包是 [floatap-windows-1.0.0.exe](https://github.com/Armstrong2015/floatap/releases/tag/v-windows-1.0.0)，下载后直接运行。说明见 [Windows 1.0.0 发布说明](docs/releases/windows-v1.0.0.md)。
 
 ## 文档
 
@@ -44,6 +48,7 @@ GitHub Actions 里的 `floatap-debug` 只用于开发中的调试，不要把它
 | 04 | [测试报告](docs/04-测试报告.md) | M1 编译、单元测试和调度模拟 |
 | 05 | [2.0.0 作业时序设计](docs/05-v2.0.0-作业时序设计.md) | 多步顺序、等待、循环 |
 | 06 | [2.0.0 测试报告](docs/06-v2.0.0-测试报告.md) | 单元测试、模拟器与实机确认 |
+| 07 | [Windows 桌面端设计](docs/07-windows-桌面端设计.md) | M5 点击、选点、存储 |
 
 ## 一次作业怎么跑
 
@@ -68,28 +73,29 @@ sequenceDiagram
 flowchart LR
   M0["M0 文档与仓库"] --> M1["M1 单点连点"]
   M1 --> M2["M2 顺序循环<br/>2.0.0"]
+  M2 --> M5["M5 Windows<br/>1.0.0"]
   M2 --> M2b["定时开始"]
-  M2b --> M3["M3 颜色条件"]
+  M5 --> M3["M3 颜色条件"]
+  M2b --> M3
   M3 --> M4["M4 画面匹配"]
-  M4 --> M5["M5 Windows"]
 
   classDef done fill:#1f6feb,stroke:#1f6feb,color:#ffffff
   classDef next fill:#9a6700,stroke:#9a6700,color:#ffffff
   classDef later fill:#6e7781,stroke:#6e7781,color:#ffffff
-  class M0,M1,M2 done
+  class M0,M1,M2,M5 done
   class M2b next
-  class M3,M4,M5 later
+  class M3,M4 later
 ```
 
 | 里程碑 | 交付 |
 | --- | --- |
 | M0 | 蓝皮书、需求、设计文档 |
 | M1 | 悬浮球、手动选点、固定 / 随机间隔、运行一段时间后停止 |
-| M2 | 多点顺序循环、每步等待、循环次数（2.0.0） |
+| M2 | 多点顺序循环、每步等待、循环次数（安卓 2.0.0） |
+| M5 | Windows 桌面端，同一份 format:1 JSON（windows 1.0.0） |
 | 定时开始 | 按时刻或时间段启动（尚未做） |
 | M3 | 导入导出、运行记录、像素颜色条件 |
 | M4 | 局部画面匹配，以及如果 / 否则 |
-| M5 | Windows 端读取同一份 JSON |
 
 ## 运行时各管一段
 
