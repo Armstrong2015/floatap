@@ -191,10 +191,10 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                             vm.update {
                                 it.copy(
                                     error = null,
-                                    warning = "去选第 ${index + 1} 步。打开要点的应用，点圆点，再点「选点」。",
+                                    warning = "请先打开要点的应用，再点「选点」。浮序会收起，点一下位置后自动回到本页；也可点「取消选点」。",
                                 )
                             }
-                            FloatRunService.showBall(context, collapse = true)
+                            FloatRunService.pick(context, collapse = true)
                         }
                     },
                     onMove = { delta -> vm.moveStep(index, delta) },
@@ -282,7 +282,16 @@ private fun StepCard(
             OutlinedTextField(
                 value = step.intervalText,
                 onValueChange = { value -> onChange(step.copy(intervalText = value.filter(Char::isDigit))) },
-                label = { Text(if (step.randomInterval) "最小间隔（毫秒）" else "间隔（毫秒）") },
+                label = { Text(if (step.randomInterval) "最小点击前等待（毫秒）" else "点击前等待（毫秒）") },
+                supportingText = {
+                    Text(
+                        if (index == 0) {
+                            "本步点击前先等这么久；上一轮最后一步点完后，也按这个等待再点第 1 步"
+                        } else {
+                            "上一步点完后，先等这么久再点本步"
+                        },
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(
@@ -290,7 +299,7 @@ private fun StepCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("随机间隔")
+                Text("随机等待")
                 Switch(
                     checked = step.randomInterval,
                     onCheckedChange = { checked -> onChange(step.copy(randomInterval = checked)) },
@@ -300,8 +309,8 @@ private fun StepCard(
                 OutlinedTextField(
                     value = step.intervalMaxText,
                     onValueChange = { value -> onChange(step.copy(intervalMaxText = value.filter(Char::isDigit))) },
-                    label = { Text("最大间隔（毫秒）") },
-                    supportingText = { Text("每次等待在这两个时间之间随机取值") },
+                    label = { Text("最大点击前等待（毫秒）") },
+                    supportingText = { Text("每次点击前在这两个时间之间随机取值") },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

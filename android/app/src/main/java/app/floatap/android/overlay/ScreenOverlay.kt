@@ -279,11 +279,16 @@ class ScreenOverlay(private val context: Context) {
         var startX = 0
         var startY = 0
         var dragging = false
+        // Menu also gets ACTION_OUTSIDE when the ball is pressed, which would hide
+        // then reopen on UP. Closing on DOWN and skipping the next open fixes that.
+        var closedMenuOnDown = false
         val threshold = 8 * context.resources.displayMetrics.density
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     dragging = false
+                    closedMenuOnDown = menu != null
+                    if (closedMenuOnDown) hideMenu()
                     downX = event.rawX
                     downY = event.rawY
                     startX = params.x
@@ -304,9 +309,12 @@ class ScreenOverlay(private val context: Context) {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (dragging) snap(params, size) else {
+                    if (dragging) {
+                        snap(params, size)
+                    } else if (!closedMenuOnDown) {
                         view.post { onBallTap(params, size) }
                     }
+                    closedMenuOnDown = false
                     true
                 }
                 MotionEvent.ACTION_OUTSIDE -> {
@@ -403,7 +411,11 @@ class ScreenOverlay(private val context: Context) {
             override fun dispatchTouchEvent(event: MotionEvent): Boolean {
                 if (event.action != MotionEvent.ACTION_OUTSIDE) return super.dispatchTouchEvent(event)
                 val now = SystemClock.uptimeMillis()
-                if (picker == null && now >= menuReadyAt && !isOwnClick(event)) hideMenu()
+                // Touches on the ball toggle the menu themselves; dismissing here would
+                // hide then immediately reopen when the ball handles ACTION_UP.
+                if (picker == null && now >= menuReadyAt && !isOwnClick(event) && !isOverBall(event)) {
+                    hideMenu()
+                }
                 return true
             }
         }
@@ -435,6 +447,16 @@ class ScreenOverlay(private val context: Context) {
         if (start == 0L) return false
         val now = SystemClock.uptimeMillis()
         return now in start..end || event.eventTime in start..end
+    }
+
+    private fun isOverBall(event: MotionEvent): Boolean {
+        val anchor = ballParams ?: return false
+        val floating = ball ?: return false
+        val size = floating.width.takeIf { it > 0 }
+            ?: (56 * context.resources.displayMetrics.density).toInt()
+        val x = event.rawX.toInt()
+        val y = event.rawY.toInt()
+        return x in anchor.x until (anchor.x + size) && y in anchor.y until (anchor.y + size)
     }
 
     private fun chip(label: String, selected: Boolean, click: () -> Unit): TextView {

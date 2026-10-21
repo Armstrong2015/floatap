@@ -50,7 +50,12 @@ class FloatRunService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
             when (intent?.action) {
-                ACTION_PICK -> beginPick()
+                ACTION_PICK -> {
+                    beginPick()
+                    if (intent.getBooleanExtra(EXTRA_COLLAPSE, false)) {
+                        RunBus.collapseHost.value = true
+                    }
+                }
                 ACTION_START -> beginRun(intent.getLongExtra(EXTRA_JOB_ID, 0L))
                 ACTION_PAUSE -> pauseInternal()
                 ACTION_RESUME -> resumeInternal()
@@ -119,7 +124,10 @@ class FloatRunService : Service() {
                 }
             }
             windows.onCancelPick = {
-                onMain { windows.hidePicker() }
+                onMain {
+                    windows.hidePicker()
+                    openEditor(Prefs(this).lastJobId)
+                }
             }
             windows.showPicker()
         } catch (error: Exception) {
@@ -130,17 +138,16 @@ class FloatRunService : Service() {
 
     private fun savePick(x: Int, y: Int) {
         scope.launch {
+            val prefs = Prefs(this@FloatRunService)
+            var editorId = prefs.lastJobId
             try {
-                val prefs = Prefs(this@FloatRunService)
                 val display = readDisplay()
                 val summaries = (application as FloatApp).repository.summaries()
                 val selected = summaries.firstOrNull { it.id == prefs.lastJobId }
                 val repository = (application as FloatApp).repository
                 if (selected == null && summaries.isNotEmpty()) {
                     windows().showNote("先在圆点里点一份作业")
-                    return@launch
-                }
-                if (selected == null) {
+                } else if (selected == null) {
                     val name = "作业${repository.count() + 1}"
                     val id = repository.save(
                         app.floatap.android.domain.Job(
@@ -154,35 +161,38 @@ class FloatRunService : Service() {
                     prefs.lastJobId = id
                     prefs.lastJobName = name
                     prefs.lastStepIndex = 0
+                    editorId = id
                     rememberPick(x, y, display.width, display.height, display.rotation, 0)
                     windows().showNote("已新建「$name」并记下 $x, $y")
-                    return@launch
+                } else {
+                    val job = repository.get(selected.id)
+                    if (job == null) {
+                        windows().showNote("这份作业已经不在了")
+                    } else {
+                        val steps = job.steps.toMutableList()
+                        val point = pointStep(x, y, display.width, display.height, display.rotation)
+                        val index = if (steps.isEmpty()) 0 else prefs.lastStepIndex.coerceIn(0, steps.lastIndex)
+                        if (steps.isEmpty()) steps += point else steps[index] = steps[index].copy(
+                            x = point.x,
+                            y = point.y,
+                            displayWidth = point.displayWidth,
+                            displayHeight = point.displayHeight,
+                            rotation = point.rotation,
+                        )
+                        repository.save(job.copy(steps = steps))
+                        prefs.lastJobId = job.id
+                        prefs.lastJobName = job.name
+                        prefs.lastStepIndex = index
+                        editorId = job.id
+                        rememberPick(x, y, display.width, display.height, display.rotation, index)
+                        windows().showNote("已记下「${job.name}」第 ${index + 1} 步 $x, $y")
+                    }
                 }
-                val job = repository.get(selected.id)
-                if (job == null) {
-                    windows().showNote("这份作业已经不在了")
-                    return@launch
-                }
-                val steps = job.steps.toMutableList()
-                val point = pointStep(x, y, display.width, display.height, display.rotation)
-                val index = if (steps.isEmpty()) 0 else prefs.lastStepIndex.coerceIn(0, steps.lastIndex)
-                if (steps.isEmpty()) steps += point else steps[index] = steps[index].copy(
-                    x = point.x,
-                    y = point.y,
-                    displayWidth = point.displayWidth,
-                    displayHeight = point.displayHeight,
-                    rotation = point.rotation,
-                )
-                repository.save(job.copy(steps = steps))
-                prefs.lastJobId = job.id
-                prefs.lastJobName = job.name
-                prefs.lastStepIndex = index
-                rememberPick(x, y, display.width, display.height, display.rotation, index)
-                windows().showNote("已记下「${job.name}」第 ${index + 1} 步 $x, $y")
             } catch (error: Exception) {
                 android.util.Log.e(TAG, "save pick failed", error)
                 windows().showNote("选点没有记下")
             }
+            openEditor(editorId)
         }
     }
 
@@ -536,8 +546,10 @@ class FloatRunService : Service() {
             ContextCompat.startForegroundService(context, intent)
         }
 
-        fun pick(context: Context) {
-            val intent = Intent(context, FloatRunService::class.java).setAction(ACTION_PICK)
+        fun pick(context: Context, collapse: Boolean = false) {
+            val intent = Intent(context, FloatRunService::class.java)
+                .setAction(ACTION_PICK)
+                .putExtra(EXTRA_COLLAPSE, collapse)
             ContextCompat.startForegroundService(context, intent)
         }
 
