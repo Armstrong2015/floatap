@@ -27,6 +27,7 @@ class FloatapApp:
         self._edit_job_id = ""
         self._steps: list[dict] = []
         self._picking_index = 0
+        self._editor_canvas: Optional[tk.Canvas] = None
         self.flash = ClickFlash(self.root)
         self.engine = RunEngine(
             on_phase=self._on_phase,
@@ -64,8 +65,34 @@ class FloatapApp:
         self.root.destroy()
 
     def _clear(self) -> None:
+        self._unbind_editor_wheel()
+        self._editor_canvas = None
         for child in self.container.winfo_children():
             child.destroy()
+
+    def _on_editor_wheel(self, event) -> str:
+        canvas = self._editor_canvas
+        if canvas is None:
+            return "break"
+        try:
+            if not canvas.winfo_exists():
+                return "break"
+        except tk.TclError:
+            return "break"
+        # Windows: event.delta is ±120 per notch.
+        steps = int(-event.delta / 120) if event.delta else 0
+        if steps:
+            canvas.yview_scroll(steps, "units")
+        return "break"
+
+    def _bind_editor_wheel(self) -> None:
+        self.root.bind_all("<MouseWheel>", self._on_editor_wheel)
+
+    def _unbind_editor_wheel(self) -> None:
+        try:
+            self.root.unbind_all("<MouseWheel>")
+        except tk.TclError:
+            pass
 
     def _on_phase(self, phase: RunPhase) -> None:
         self.root.after(0, lambda: self._apply_phase(phase))
@@ -184,14 +211,21 @@ class FloatapApp:
         canvas = tk.Canvas(form, highlightthickness=0)
         scroll = ttk.Scrollbar(form, orient="vertical", command=canvas.yview)
         self.editor_body = ttk.Frame(canvas)
-        self.editor_body.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
-        )
-        canvas.create_window((0, 0), window=self.editor_body, anchor="nw")
+        self._editor_canvas = canvas
+
+        def _sync_scrollregion(_event=None) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _sync_width(event) -> None:
+            canvas.itemconfigure(body_win, width=event.width)
+
+        body_win = canvas.create_window((0, 0), window=self.editor_body, anchor="nw")
+        self.editor_body.bind("<Configure>", _sync_scrollregion)
+        canvas.bind("<Configure>", _sync_width)
         canvas.configure(yscrollcommand=scroll.set)
         canvas.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
+        self._bind_editor_wheel()
 
         ttk.Label(self.editor_body, text="名称").pack(anchor="w")
         ttk.Entry(self.editor_body, textvariable=self.name_var).pack(fill="x", pady=(0, 8))

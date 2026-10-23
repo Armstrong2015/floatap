@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
-$name = "floatap-windows-1.0.4"
+$name = "floatap-windows-1.0.5"
 python -m PyInstaller --noconfirm --clean --onefile --windowed `
   --name $name `
   --paths . `
