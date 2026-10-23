@@ -225,11 +225,24 @@ class RunEngine:
 
                 self._watcher.ignore_until = time.time() + 0.4
                 try:
-                    click.tap(current.x, current.y, restore_cursor=True)
+                    ok = click.tap(
+                        current.x,
+                        current.y,
+                        restore_cursor=True,
+                        stop_check=self._stop.is_set,
+                    )
                 except OSError as exc:
                     self._on_message(f"点击失败：{exc}")
                     self.stop(StopReason.USER)
                     return
+                if not ok:
+                    if self._stop.is_set():
+                        return
+                    # User was dragging; wait a bit and retry the same step.
+                    self._on_message("检测到你在拖动鼠标，稍后再点 · F9 停止")
+                    if not self._wait_interruptible(300):
+                        return
+                    continue
 
                 if self._on_click:
                     try:

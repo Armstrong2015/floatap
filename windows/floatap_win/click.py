@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import time
 from ctypes import wintypes
 
 user32 = ctypes.windll.user32
@@ -11,6 +12,10 @@ MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 MOUSEEVENTF_ABSOLUTE = 0x8000
 MOUSEEVENTF_VIRTUALDESK = 0x4000
+
+VK_LBUTTON = 0x01
+VK_RBUTTON = 0x02
+VK_MBUTTON = 0x04
 
 
 class POINT(ctypes.Structure):
@@ -74,6 +79,26 @@ def set_cursor_pos(x: int, y: int) -> None:
     user32.SetCursorPos(int(x), int(y))
 
 
+def mouse_button_down() -> bool:
+    """True if the user is holding a mouse button (e.g. dragging a window)."""
+    for vk in (VK_LBUTTON, VK_RBUTTON, VK_MBUTTON):
+        if user32.GetAsyncKeyState(vk) & 0x8000:
+            return True
+    return False
+
+
+def wait_for_mouse_idle(timeout_sec: float = 30.0, stop_check=None) -> bool:
+    """Wait until no mouse button is held. Returns False if timed out / stopped."""
+    deadline = time.time() + timeout_sec
+    while mouse_button_down():
+        if stop_check is not None and stop_check():
+            return False
+        if time.time() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
 def _abs_coords(x: int, y: int) -> tuple[int, int]:
     left = int(user32.GetSystemMetrics(76))
     top = int(user32.GetSystemMetrics(77))
@@ -94,8 +119,19 @@ def _send(flags: int, x: int = 0, y: int = 0) -> None:
         raise OSError(f"SendInput failed: {ctypes.GetLastError()}")
 
 
-def tap(x: int, y: int, restore_cursor: bool = True) -> None:
-    """Click at screen (x, y), then put the user's cursor back."""
+def tap(
+    x: int,
+    y: int,
+    restore_cursor: bool = True,
+    stop_check=None,
+) -> bool:
+    """Click at screen (x, y), then put the user's cursor back.
+
+    Skips while the user is holding a mouse button so dragging is not hijacked.
+    Returns False if cancelled / timed out waiting for idle mouse.
+    """
+    if not wait_for_mouse_idle(30.0, stop_check=stop_check):
+        return False
     origin = cursor_pos() if restore_cursor else None
     abs_x, abs_y = _abs_coords(x, y)
     flags_move = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
@@ -104,6 +140,7 @@ def tap(x: int, y: int, restore_cursor: bool = True) -> None:
     _send(MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, abs_x, abs_y)
     if origin is not None:
         set_cursor_pos(origin[0], origin[1])
+    return True
 
 
 def is_own_extra(extra_info: int) -> bool:

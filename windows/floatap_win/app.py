@@ -9,7 +9,6 @@ from .engine import RunEngine
 from .models import Job, Prefs, RunPhase, Step, WaitMode
 from .rules import JobDraft, StepDraft, check_draft
 from .store import JobStore
-from .ui_ball import FloatingBall
 from .ui_controls import MainRunButtons, RunControlBar
 from .ui_flash import ClickFlash
 from .ui_picker import PickerOverlay
@@ -35,19 +34,6 @@ class FloatapApp:
             on_click=self._on_program_click,
         )
         self.picker = PickerOverlay(self.root, self._picked, self._pick_cancelled)
-        self.ball = FloatingBall(
-            self.root,
-            on_prepare_idle=self._ball_idle_menu,
-            on_start=self._ball_start,
-            on_pause=self.engine.pause,
-            on_resume=self.engine.resume,
-            on_stop=lambda: self.engine.stop(),
-            on_pick=self._ball_pick,
-            on_open=self._ball_open,
-            on_select_job=self._ball_select_job,
-            on_move=self._ball_moved,
-        )
-        self.ball.set_position(self.prefs.ball_x, self.prefs.ball_y)
         self.run_bar = RunControlBar(
             self.root,
             on_pause=self.engine.pause,
@@ -74,7 +60,6 @@ class FloatapApp:
     def _quit(self) -> None:
         self.engine.shutdown()
         self.run_bar.hide()
-        self.prefs.ball_x, self.prefs.ball_y = self.ball.position()
         self.store.save_prefs(self.prefs)
         self.root.destroy()
 
@@ -86,7 +71,6 @@ class FloatapApp:
         self.root.after(0, lambda: self._apply_phase(phase))
 
     def _apply_phase(self, phase: RunPhase) -> None:
-        self.ball.paint(phase)
         self.run_bar.update(phase)
         self.main_buttons.update(phase)
 
@@ -109,9 +93,9 @@ class FloatapApp:
             "浮序只点击你亲手标出的位置。\n"
             "请遵守目标软件与平台的规则，以及当地法律。\n"
             "不做注入、不绕过权限、不对抗反作弊或验证码。\n\n"
-            "运行中：主窗口和置顶控制条都有「暂停」「停止」按钮；\n"
-            "也可以按 F8 暂停/继续，F9 立即停止。\n"
-            "程序点击后会把光标还回原处，并在落点闪一下圆圈。"
+            "桌面版没有悬浮球，请在主窗口里选点、开始。\n"
+            "运行中：底部按钮或置顶控制条可暂停/停止；也可用 F8 / F9。\n"
+            "你在拖窗口时程序会先等你松开鼠标，再继续点。"
         )
         ttk.Label(self.container, text=body, justify="left", font=("Segoe UI", 11)).pack(anchor="w")
         ttk.Button(self.container, text="我知道了", command=self._accept_guide).pack(anchor="w", pady=24)
@@ -192,6 +176,7 @@ class FloatapApp:
         ttk.Label(bar, text="编辑作业" if not is_new else "新建作业", font=("Segoe UI", 16, "bold")).pack(
             side="left", padx=12
         )
+        ttk.Button(bar, text="开始", command=self._start_current_editor_job).pack(side="right", padx=(8, 0))
         ttk.Button(bar, text="保存", command=self._save_editor).pack(side="right")
 
         form = ttk.Frame(self.container)
@@ -524,55 +509,13 @@ class FloatapApp:
         self.store.save_prefs(self.prefs)
         self.engine.start(job)
 
-    def _ball_idle_menu(self) -> None:
-        self.ball.show_idle_menu(self.store.summaries(), self.prefs.last_job_id)
-
-    def _ball_start(self) -> None:
-        job_id = self.prefs.last_job_id
-        if not job_id:
-            jobs = self.store.summaries()
-            if not jobs:
-                self.status.set("先新建一份作业")
-                return
-            job_id = jobs[0].id
-            self.prefs.last_job_id = job_id
-            self.store.save_prefs(self.prefs)
-        self._start_job(job_id)
-
-    def _ball_pick(self) -> None:
-        job_id = self.prefs.last_job_id
-        if not job_id:
-            self.status.set("先选择一份作业")
+    def _start_current_editor_job(self) -> None:
+        if not self._save_editor(allow_missing=False):
             return
-        job = self.store.get(job_id)
-        if job is None:
-            self.status.set("这份作业已经不在了")
+        if not self._edit_job_id:
+            self.status.set("请先保存作业")
             return
-        self._edit_job_id = job_id
-        self._picking_index = self.prefs.last_step_index
-        self.root.iconify()
-        self.root.after(200, self.picker.show)
-
-    def _ball_open(self) -> None:
-        job_id = self.prefs.last_job_id
-        self.root.deiconify()
-        self.root.lift()
-        if job_id:
-            self._edit_job(job_id)
-        else:
-            self._show_home()
-
-    def _ball_select_job(self, job_id: str, name: str) -> None:
-        self.prefs.last_job_id = job_id
-        self.prefs.last_step_index = 0
-        self.store.save_prefs(self.prefs)
-        self.status.set(f"当前作业「{name}」")
-        self._ball_idle_menu()
-
-    def _ball_moved(self, x: int, y: int) -> None:
-        self.prefs.ball_x = x
-        self.prefs.ball_y = y
-        self.store.save_prefs(self.prefs)
+        self._start_job(self._edit_job_id)
 
 
 def main() -> None:

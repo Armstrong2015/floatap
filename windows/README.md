@@ -16,4 +16,6 @@ python main.py
 .\build_exe.ps1
 ```
 
-产物：`dist/floatap-windows-1.0.0.exe`，并复制到仓库上级 `.tools/`。
+产物：`dist/floatap-windows-1.0.4.exe`，并复制到仓库上级 `.tools/`。
+
+桌面版无悬浮球；运行控制用主窗口按钮、置顶控制条或 F8/F9。
