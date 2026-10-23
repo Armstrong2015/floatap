@@ -5,7 +5,7 @@
 在自己的安卓手机或 Windows 电脑上，选定屏幕坐标，按间隔或顺序把点击做完。
 
 [![平台](https://img.shields.io/badge/平台-Android_8.0+_·_Windows-3DDC84?style=flat-square&logo=android&logoColor=white)](docs/03-产品设计开发文档.md)
-[![安卓](https://img.shields.io/badge/安卓-2.1.0-1f6feb?style=flat-square)](docs/releases/v2.1.0.md)
+[![安卓](https://img.shields.io/badge/安卓-2.1.0-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/tag/v2.1.0)
 [![Windows](https://img.shields.io/badge/Windows-1.0.5-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/Armstrong2015/floatap/releases/tag/v-windows-1.0.5)
 [![APK](https://img.shields.io/github/actions/workflow/status/Armstrong2015/floatap/build-apk.yml?style=flat-square&label=APK)](https://github.com/Armstrong2015/floatap/actions)
 [![网络](https://img.shields.io/badge/网络-不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
@@ -30,7 +30,7 @@ flowchart LR
 
 ### 安卓
 
-当前开发版是 **2.1.0**（定时开始/结束），正式 GitHub 包等实机确认后再发。此前正式包仍是 [floatap-2.0.0.apk](https://github.com/Armstrong2015/floatap/releases/tag/v2.0.0)。多步作业按顺序点击；可设开始与结束时刻。说明见 [2.1.0 发布说明](docs/releases/v2.1.0.md)。
+当前正式包是 [floatap-2.1.0.apk](https://github.com/Armstrong2015/floatap/releases/tag/v2.1.0)。多步作业按顺序点击；可设开始与结束时刻。说明见 [2.1.0 发布说明](docs/releases/v2.1.0.md)。
 
 手机需要允许安装未知来源应用。如果之前装过调试包，要先卸载再装。装好后重新打开悬浮窗和辅助功能。
 
