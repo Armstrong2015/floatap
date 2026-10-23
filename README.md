@@ -6,11 +6,11 @@
 
 [![平台](https://img.shields.io/badge/平台-Android_8.0+_·_Windows-3DDC84?style=flat-square&logo=android&logoColor=white)](docs/03-产品设计开发文档.md)
 [![安卓](https://img.shields.io/badge/安卓-2.0.0-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/tag/v2.0.0)
-[![Windows](https://img.shields.io/badge/Windows-1.0.2-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/Armstrong2015/floatap/releases/tag/v-windows-1.0.2)
+[![Windows](https://img.shields.io/badge/Windows-1.0.3-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/Armstrong2015/floatap/releases/tag/v-windows-1.0.3)
 [![APK](https://img.shields.io/github/actions/workflow/status/Armstrong2015/floatap/build-apk.yml?style=flat-square&label=APK)](https://github.com/Armstrong2015/floatap/actions)
 [![网络](https://img.shields.io/badge/网络-不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
 
-安卓工程在 [`android`](android)，Windows 工程在 [`windows`](windows)。安卓正式版 2.0.0 支持多步顺序循环；Windows 正式版 1.0.2 共用同一套 `format: 1` 作业 JSON。定时开始、颜色条件和画面匹配留到后面的版本。
+安卓工程在 [`android`](android)，Windows 工程在 [`windows`](windows)。安卓正式版 2.0.0 支持多步顺序循环；Windows 正式版 1.0.3 共用同一套 `format: 1` 作业 JSON。定时开始、颜色条件和画面匹配留到后面的版本。
 
 </div>
 
@@ -36,7 +36,7 @@ flowchart LR
 
 ### Windows
 
-当前正式包是 [floatap-windows-1.0.2.exe](https://github.com/Armstrong2015/floatap/releases/tag/v-windows-1.0.2)，下载后直接运行。运行中 **F8** 暂停、**F9** 停止；程序点击后光标归位并闪落点。请勿使用 1.0.0。说明见 [Windows 1.0.2 发布说明](docs/releases/windows-v1.0.2.md)。
+当前正式包是 [floatap-windows-1.0.3.exe](https://github.com/Armstrong2015/floatap/releases/tag/v-windows-1.0.3)，下载后直接运行。运行中可用底部按钮或置顶控制条暂停/停止，也可用 **F8** / **F9**。请勿使用 1.0.0。说明见 [Windows 1.0.3 发布说明](docs/releases/windows-v1.0.3.md)。
 
 ## 文档
 
@@ -92,7 +92,7 @@ flowchart LR
 | M0 | 蓝皮书、需求、设计文档 |
 | M1 | 悬浮球、手动选点、固定 / 随机间隔、运行一段时间后停止 |
 | M2 | 多点顺序循环、每步等待、循环次数（安卓 2.0.0） |
-| M5 | Windows 桌面端，同一份 format:1 JSON（windows 1.0.2） |
+| M5 | Windows 桌面端，同一份 format:1 JSON（windows 1.0.3） |
 | 定时开始 | 按时刻或时间段启动（尚未做） |
 | M3 | 导入导出、运行记录、像素颜色条件 |
 | M4 | 局部画面匹配，以及如果 / 否则 |

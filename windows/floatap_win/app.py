@@ -10,6 +10,7 @@ from .models import Job, Prefs, RunPhase, Step, WaitMode
 from .rules import JobDraft, StepDraft, check_draft
 from .store import JobStore
 from .ui_ball import FloatingBall
+from .ui_controls import MainRunButtons, RunControlBar
 from .ui_flash import ClickFlash
 from .ui_picker import PickerOverlay
 
@@ -23,7 +24,7 @@ class FloatapApp:
         self.root.title("浮序 Floatap")
         self.root.geometry("720x780")
         self.root.minsize(560, 640)
-        self.status = tk.StringVar(value="准备就绪 · 运行中按 F8 暂停，F9 停止")
+        self.status = tk.StringVar(value="准备就绪 · 可用下方按钮或 F8/F9 控制运行")
         self._edit_job_id = ""
         self._steps: list[dict] = []
         self._picking_index = 0
@@ -47,6 +48,18 @@ class FloatapApp:
             on_move=self._ball_moved,
         )
         self.ball.set_position(self.prefs.ball_x, self.prefs.ball_y)
+        self.run_bar = RunControlBar(
+            self.root,
+            on_pause=self.engine.pause,
+            on_resume=self.engine.resume,
+            on_stop=lambda: self.engine.stop(),
+        )
+        self.main_buttons = MainRunButtons(
+            self.root,
+            on_pause=self.engine.pause,
+            on_resume=self.engine.resume,
+            on_stop=lambda: self.engine.stop(),
+        )
         self.container = ttk.Frame(self.root, padding=16)
         self.container.pack(fill="both", expand=True)
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
@@ -60,6 +73,7 @@ class FloatapApp:
 
     def _quit(self) -> None:
         self.engine.shutdown()
+        self.run_bar.hide()
         self.prefs.ball_x, self.prefs.ball_y = self.ball.position()
         self.store.save_prefs(self.prefs)
         self.root.destroy()
@@ -69,7 +83,12 @@ class FloatapApp:
             child.destroy()
 
     def _on_phase(self, phase: RunPhase) -> None:
-        self.root.after(0, lambda: self.ball.paint(phase))
+        self.root.after(0, lambda: self._apply_phase(phase))
+
+    def _apply_phase(self, phase: RunPhase) -> None:
+        self.ball.paint(phase)
+        self.run_bar.update(phase)
+        self.main_buttons.update(phase)
 
     def _on_message(self, text: str) -> None:
         self.root.after(0, lambda: self.status.set(text))
@@ -90,7 +109,8 @@ class FloatapApp:
             "浮序只点击你亲手标出的位置。\n"
             "请遵守目标软件与平台的规则，以及当地法律。\n"
             "不做注入、不绕过权限、不对抗反作弊或验证码。\n\n"
-            "运行中：F8 暂停/继续，F9 立即停止。\n"
+            "运行中：主窗口和置顶控制条都有「暂停」「停止」按钮；\n"
+            "也可以按 F8 暂停/继续，F9 立即停止。\n"
             "程序点击后会把光标还回原处，并在落点闪一下圆圈。"
         )
         ttk.Label(self.container, text=body, justify="left", font=("Segoe UI", 11)).pack(anchor="w")
@@ -110,7 +130,7 @@ class FloatapApp:
         ttk.Label(self.container, textvariable=self.status, foreground="#555").pack(anchor="w", pady=(8, 4))
         ttk.Label(
             self.container,
-            text="运行中请用键盘：F8 暂停/继续，F9 停止（不必去抢悬浮球）。",
+            text="运行中点底部「暂停」「停止」，或用置顶控制条 / F8、F9。",
             foreground="#0F766E",
         ).pack(anchor="w", pady=(0, 12))
         jobs = self.store.summaries()
