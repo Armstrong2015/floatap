@@ -8,6 +8,7 @@ from typing import Callable, Optional
 from . import click
 from .display import read_display
 from .hook import MousePauseWatcher
+from .hotkeys import HotkeyWatcher
 from .models import Job, RunPhase, StopReason
 from .rules import display_matches
 from .schedule import Progress, next_stop, wait_millis
@@ -31,10 +32,12 @@ class RunEngine:
         self._lock = threading.Lock()
         self._watcher = MousePauseWatcher(self._user_touch)
         self._watcher.start()
+        self._hotkeys = HotkeyWatcher(self._hotkey_pause_toggle, self._hotkey_stop)
 
     def shutdown(self) -> None:
         self.stop(StopReason.USER)
         self._watcher.stop()
+        self._hotkeys.enabled = False
 
     def start(self, job: Job) -> None:
         with self._lock:
@@ -57,6 +60,8 @@ class RunEngine:
             self._set_phase(RunPhase.ARMED)
             self._watcher.enabled = bool(job.pause_on_user_touch)
             self._watcher.ignore_until = time.time() + 0.5
+            self._hotkeys.enabled = True
+            self._on_message(f"「{job.name}」准备开始 · F8 暂停/继续 · F9 停止")
             self._thread = threading.Thread(
                 target=self._run_loop,
                 args=(job,),
@@ -70,14 +75,14 @@ class RunEngine:
             if self.phase in (RunPhase.RUNNING, RunPhase.ARMED):
                 self._pause.clear()
                 self._set_phase(RunPhase.PAUSED)
-                self._on_message("已暂停")
+                self._on_message("已暂停 · F8 继续 · F9 停止")
 
     def resume(self) -> None:
         with self._lock:
             if self.phase == RunPhase.PAUSED:
                 self._pause.set()
                 self._set_phase(RunPhase.RUNNING)
-                self._on_message("继续点击")
+                self._on_message("继续点击 · F8 暂停 · F9 停止")
 
     def stop(self, reason: StopReason = StopReason.USER) -> None:
         with self._lock:
@@ -86,6 +91,7 @@ class RunEngine:
             self._stop.set()
             self._pause.set()
             self._watcher.enabled = False
+            self._hotkeys.enabled = False
             self._set_phase(RunPhase.IDLE)
             labels = {
                 StopReason.USER: "已停止",
@@ -95,6 +101,16 @@ class RunEngine:
                 StopReason.DISPLAY_CHANGED: "屏幕尺寸变化，已停止",
             }
             self._on_message(labels.get(reason, "已停止"))
+
+    def _hotkey_pause_toggle(self) -> None:
+        if self.phase == RunPhase.PAUSED:
+            self.resume()
+        elif self.phase in (RunPhase.RUNNING, RunPhase.ARMED):
+            self.pause()
+
+    def _hotkey_stop(self) -> None:
+        if self.phase != RunPhase.IDLE:
+            self.stop(StopReason.USER)
 
     def _user_touch(self) -> None:
         if self.phase in (RunPhase.RUNNING, RunPhase.ARMED):
@@ -107,13 +123,17 @@ class RunEngine:
         except Exception:
             pass
 
+    def _poll_controls(self) -> None:
+        self._watcher.poll()
+        self._hotkeys.poll()
+
     def _wait_interruptible(self, total_ms: int) -> bool:
         remaining = total_ms
         saw_pause = False
         while remaining > 0:
             if self._stop.is_set():
                 return False
-            self._watcher.poll()
+            self._poll_controls()
             if not self._pause.is_set():
                 saw_pause = True
                 time.sleep(0.05)
@@ -133,13 +153,13 @@ class RunEngine:
             while seconds > 0:
                 if self._stop.is_set():
                     return
-                self._watcher.poll()
+                self._poll_controls()
                 if self.phase == RunPhase.PAUSED or not self._pause.is_set():
                     time.sleep(0.05)
                     continue
                 if self.phase != RunPhase.ARMED:
                     return
-                self._on_message(f"「{job.name}」{seconds} 秒后开始")
+                self._on_message(f"「{job.name}」{seconds} 秒后开始 · F8 暂停 · F9 停止")
                 if not self._wait_interruptible(1000):
                     return
                 if self.phase == RunPhase.ARMED:
@@ -148,7 +168,7 @@ class RunEngine:
             while not self._pause.is_set():
                 if self._stop.is_set():
                     return
-                self._watcher.poll()
+                self._poll_controls()
                 time.sleep(0.05)
             if self._stop.is_set():
                 return
@@ -163,7 +183,7 @@ class RunEngine:
                 while not self._pause.is_set():
                     if self._stop.is_set():
                         return
-                    self._watcher.poll()
+                    self._poll_controls()
                     time.sleep(0.05)
                 if self._stop.is_set():
                     return
@@ -203,9 +223,9 @@ class RunEngine:
                         self.stop(reason)
                         return
 
-                self._watcher.ignore_until = time.time() + 0.35
+                self._watcher.ignore_until = time.time() + 0.4
                 try:
-                    click.tap(current.x, current.y)
+                    click.tap(current.x, current.y, restore_cursor=True)
                 except OSError as exc:
                     self._on_message(f"点击失败：{exc}")
                     self.stop(StopReason.USER)
@@ -224,7 +244,9 @@ class RunEngine:
                 loops = progress.loops + 1 if next_index == 0 else progress.loops
                 progress = Progress(clicks, loops, first)
                 index = next_index
-                self._on_message(f"「{job.name}」第 {clicked_step} 步，已点击 {clicks} 次")
+                self._on_message(
+                    f"「{job.name}」第 {clicked_step} 步，已点击 {clicks} 次 · F9 停止"
+                )
 
                 if job.loop_limit is not None and loops >= job.loop_limit and next_index == 0:
                     self.stop(StopReason.LOOP_LIMIT)
@@ -242,5 +264,6 @@ class RunEngine:
                     return
         finally:
             self._watcher.enabled = False
+            self._hotkeys.enabled = False
             if self.phase != RunPhase.IDLE:
                 self._set_phase(RunPhase.IDLE)

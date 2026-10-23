@@ -10,6 +10,7 @@ from .models import Job, Prefs, RunPhase, Step, WaitMode
 from .rules import JobDraft, StepDraft, check_draft
 from .store import JobStore
 from .ui_ball import FloatingBall
+from .ui_flash import ClickFlash
 from .ui_picker import PickerOverlay
 
 
@@ -22,13 +23,15 @@ class FloatapApp:
         self.root.title("浮序 Floatap")
         self.root.geometry("720x780")
         self.root.minsize(560, 640)
-        self.status = tk.StringVar(value="准备就绪")
+        self.status = tk.StringVar(value="准备就绪 · 运行中按 F8 暂停，F9 停止")
         self._edit_job_id = ""
         self._steps: list[dict] = []
         self._picking_index = 0
+        self.flash = ClickFlash(self.root)
         self.engine = RunEngine(
             on_phase=self._on_phase,
             on_message=self._on_message,
+            on_click=self._on_program_click,
         )
         self.picker = PickerOverlay(self.root, self._picked, self._pick_cancelled)
         self.ball = FloatingBall(
@@ -71,6 +74,9 @@ class FloatapApp:
     def _on_message(self, text: str) -> None:
         self.root.after(0, lambda: self.status.set(text))
 
+    def _on_program_click(self, _step: int, x: int, y: int) -> None:
+        self.flash.show(x, y)
+
     def _show_guide(self) -> None:
         self._clear()
         ttk.Label(self.container, text="浮序", font=("Segoe UI", 28, "bold")).pack(anchor="w")
@@ -83,7 +89,9 @@ class FloatapApp:
         body = (
             "浮序只点击你亲手标出的位置。\n"
             "请遵守目标软件与平台的规则，以及当地法律。\n"
-            "不做注入、不绕过权限、不对抗反作弊或验证码。"
+            "不做注入、不绕过权限、不对抗反作弊或验证码。\n\n"
+            "运行中：F8 暂停/继续，F9 立即停止。\n"
+            "程序点击后会把光标还回原处，并在落点闪一下圆圈。"
         )
         ttk.Label(self.container, text=body, justify="left", font=("Segoe UI", 11)).pack(anchor="w")
         ttk.Button(self.container, text="我知道了", command=self._accept_guide).pack(anchor="w", pady=24)
@@ -99,7 +107,12 @@ class FloatapApp:
         head.pack(fill="x")
         ttk.Label(head, text="作业", font=("Segoe UI", 22, "bold")).pack(side="left")
         ttk.Button(head, text="新建作业", command=self._new_job).pack(side="right")
-        ttk.Label(self.container, textvariable=self.status, foreground="#555").pack(anchor="w", pady=(8, 12))
+        ttk.Label(self.container, textvariable=self.status, foreground="#555").pack(anchor="w", pady=(8, 4))
+        ttk.Label(
+            self.container,
+            text="运行中请用键盘：F8 暂停/继续，F9 停止（不必去抢悬浮球）。",
+            foreground="#0F766E",
+        ).pack(anchor="w", pady=(0, 12))
         jobs = self.store.summaries()
         if not jobs:
             ttk.Label(self.container, text="还没有作业。点右上角新建一份。").pack(anchor="w")

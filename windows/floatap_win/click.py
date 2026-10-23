@@ -13,6 +13,10 @@ MOUSEEVENTF_ABSOLUTE = 0x8000
 MOUSEEVENTF_VIRTUALDESK = 0x4000
 
 
+class POINT(ctypes.Structure):
+    _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+
 class MOUSEINPUT(ctypes.Structure):
     _fields_ = [
         ("dx", wintypes.LONG),
@@ -57,8 +61,17 @@ class INPUT(ctypes.Structure):
     ]
 
 
-# Extra info marker so our own injected clicks can be ignored by the pause hook.
 OWN_CLICK_EXTRA = 0xF107A70
+
+
+def cursor_pos() -> tuple[int, int]:
+    point = POINT()
+    user32.GetCursorPos(ctypes.byref(point))
+    return int(point.x), int(point.y)
+
+
+def set_cursor_pos(x: int, y: int) -> None:
+    user32.SetCursorPos(int(x), int(y))
 
 
 def _abs_coords(x: int, y: int) -> tuple[int, int]:
@@ -66,7 +79,6 @@ def _abs_coords(x: int, y: int) -> tuple[int, int]:
     top = int(user32.GetSystemMetrics(77))
     width = int(user32.GetSystemMetrics(78)) or int(user32.GetSystemMetrics(0))
     height = int(user32.GetSystemMetrics(79)) or int(user32.GetSystemMetrics(1))
-    # Map to 0..65535 across the virtual desktop.
     abs_x = int(round((x - left) * 65535 / max(width - 1, 1)))
     abs_y = int(round((y - top) * 65535 / max(height - 1, 1)))
     return abs_x, abs_y
@@ -82,12 +94,16 @@ def _send(flags: int, x: int = 0, y: int = 0) -> None:
         raise OSError(f"SendInput failed: {ctypes.GetLastError()}")
 
 
-def tap(x: int, y: int) -> None:
+def tap(x: int, y: int, restore_cursor: bool = True) -> None:
+    """Click at screen (x, y), then put the user's cursor back."""
+    origin = cursor_pos() if restore_cursor else None
     abs_x, abs_y = _abs_coords(x, y)
     flags_move = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
     _send(flags_move, abs_x, abs_y)
     _send(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, abs_x, abs_y)
     _send(MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, abs_x, abs_y)
+    if origin is not None:
+        set_cursor_pos(origin[0], origin[1])
 
 
 def is_own_extra(extra_info: int) -> bool:
