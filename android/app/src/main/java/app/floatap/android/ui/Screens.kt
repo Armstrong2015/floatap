@@ -3,17 +3,13 @@ package app.floatap.android.ui
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -23,10 +19,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +33,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,7 +45,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -59,7 +55,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.floatap.android.Prefs
 import app.floatap.android.R
 import app.floatap.android.canDrawOverlay
-import app.floatap.android.capture.ScreenCapture
 import app.floatap.android.domain.formatMinutes
 import app.floatap.android.domain.isPastEnd
 import app.floatap.android.domain.isPastStart
@@ -105,21 +100,29 @@ fun HomeScreen(
     val jobs by vm.jobs.collectAsState()
     val notice = vm.message ?: RunBus.message.collectAsState().value
     val scope = rememberCoroutineScope()
+    var showExportPicker by remember { mutableStateOf(false) }
+    var exportSelection by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var pendingExportIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        if (uri == null) {
+            pendingExportIds = emptyList()
+            return@rememberLauncherForActivityResult
+        }
+        val ids = pendingExportIds
+        pendingExportIds = emptyList()
         scope.launch {
             try {
-                val json = vm.exportAllJson()
+                val json = vm.exportJobsJson(ids)
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         out.write(json.toByteArray(Charsets.UTF_8))
                     } ?: error("无法写入文件")
                 }
                 vm.clearMessage()
-                RunBus.message.value = "已导出全部作业"
+                RunBus.message.value = "已导出 ${ids.size} 份作业"
             } catch (error: Exception) {
                 RunBus.message.value = error.message ?: "导出失败"
             }
@@ -136,11 +139,66 @@ fun HomeScreen(
                         ?: error("无法读取文件")
                 }
                 val count = vm.importJson(text)
-                RunBus.message.value = "已导入 $count 份作业"
+                RunBus.message.value = "已导入 $count 份作业（同名会自动加数字后缀）"
             } catch (error: Exception) {
                 RunBus.message.value = error.message ?: "导入失败"
             }
         }
+    }
+    if (showExportPicker) {
+        AlertDialog(
+            onDismissRequest = { showExportPicker = false },
+            title = { Text("选择要导出的作业") },
+            text = {
+                Column(
+                    Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { exportSelection = jobs.map { it.id }.toSet() }) {
+                            Text("全选")
+                        }
+                        TextButton(onClick = { exportSelection = emptySet() }) { Text("全不选") }
+                    }
+                    jobs.forEach { job ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Checkbox(
+                                checked = job.id in exportSelection,
+                                onCheckedChange = { checked ->
+                                    exportSelection = if (checked) {
+                                        exportSelection + job.id
+                                    } else {
+                                        exportSelection - job.id
+                                    }
+                                },
+                            )
+                            Text(job.name, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (exportSelection.isEmpty()) {
+                            RunBus.message.value = "请至少勾选一份作业"
+                            return@TextButton
+                        }
+                        pendingExportIds = exportSelection.toList()
+                        showExportPicker = false
+                        exportLauncher.launch("floatap-jobs.json")
+                    },
+                ) { Text("导出选中") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportPicker = false }) { Text("取消") }
+            },
+        )
     }
     Scaffold(
         topBar = {
@@ -170,7 +228,14 @@ fun HomeScreen(
             Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) { Text("新建作业") }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 FilledTonalButton(
-                    onClick = { exportLauncher.launch("floatap-jobs.json") },
+                    onClick = {
+                        if (jobs.isEmpty()) {
+                            RunBus.message.value = "还没有作业可导出"
+                        } else {
+                            exportSelection = jobs.map { it.id }.toSet()
+                            showExportPicker = true
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                 ) { Text("导出") }
                 FilledTonalButton(
@@ -484,7 +549,6 @@ private fun StepCard(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            ColorConditionBlock(step = step, onChange = onChange)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { onMove(-1) }, enabled = index > 0) { Text("上移") }
                 TextButton(onClick = { onMove(1) }, enabled = index < count - 1) { Text("下移") }
@@ -494,98 +558,10 @@ private fun StepCard(
     }
 }
 
-@Composable
-private fun ColorConditionBlock(step: StepUi, onChange: (StepUi) -> Unit) {
-    val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf<String?>(null) }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("颜色条件")
-        Switch(
-            checked = step.useColor,
-            onCheckedChange = { checked -> onChange(step.copy(useColor = checked)) },
-        )
-    }
-    if (!step.useColor) return
-    Text("点击前检查该步坐标的颜色是否接近样本。需先在设置里允许读取画面。")
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        val argb = step.colorArgb
-        Box(
-            Modifier
-                .size(28.dp)
-                .background(
-                    if (argb == null) Color.LightGray else Color(argb),
-                    CircleShape,
-                ),
-        )
-        Text(if (argb == null) "尚未取色" else "已取色 #${Integer.toHexString(argb).uppercase()}")
-    }
-    FilledTonalButton(
-        onClick = {
-            if (step.x < 0 || step.y < 0) {
-                status = "先选点再取色"
-                return@FilledTonalButton
-            }
-            if (!ScreenCapture.isReady()) {
-                status = "请先到设置里允许读取画面"
-                return@FilledTonalButton
-            }
-            scope.launch {
-                val pixel = withContext(Dispatchers.IO) {
-                    ScreenCapture.awaitPixel(step.x, step.y)
-                }
-                if (pixel == null) {
-                    status = "读不到颜色，请重新允许读取画面"
-                } else {
-                    onChange(step.copy(colorArgb = pixel))
-                    status = "已取色"
-                }
-            }
-        },
-        modifier = Modifier.fillMaxWidth(),
-    ) { Text("在该步坐标取色") }
-    Text("容差 ${step.colorTolerance}")
-    Slider(
-        value = step.colorTolerance.toFloat(),
-        onValueChange = { value -> onChange(step.copy(colorTolerance = value.toInt())) },
-        valueRange = 0f..80f,
-        steps = 15,
-    )
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("不匹配时跳过本步（关闭则停止作业）")
-        Switch(
-            checked = step.colorSkipOnMismatch,
-            onCheckedChange = { checked -> onChange(step.copy(colorSkipOnMismatch = checked)) },
-        )
-    }
-    status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    var captureReady by remember { mutableStateOf(ScreenCapture.isReady()) }
-    var captureNote by remember { mutableStateOf<String?>(null) }
-    val captureLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            if (context.canDrawOverlay()) FloatRunService.showBall(context)
-            val ok = ScreenCapture.start(context, result.resultCode, result.data!!)
-            captureReady = ok
-            captureNote = if (ok) "已允许读取画面，可在编辑页取色" else "读取画面没有打开"
-        } else {
-            captureNote = "没有允许读取画面"
-        }
-    }
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("设置") },
@@ -612,21 +588,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }) { Text("打开辅助功能设置") }
             }
-            Text(if (captureReady) "已允许读取画面（颜色条件）" else "尚未允许读取画面")
-            Text("颜色条件需要系统录屏授权，只在本机比对像素，不上网。进程被杀后需重新允许。")
-            if (!captureReady) {
-                Button(onClick = {
-                    val mgr = context.getSystemService(MediaProjectionManager::class.java)
-                    captureLauncher.launch(mgr.createScreenCaptureIntent())
-                }) { Text("允许读取画面") }
-            } else {
-                TextButton(onClick = {
-                    ScreenCapture.stop()
-                    captureReady = false
-                    captureNote = "已关闭读取画面"
-                }) { Text("关闭读取画面") }
-            }
-            captureNote?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             Text("从最近任务划掉浮序会关掉圆点和正在进行的点击。辅助功能保持开启，重新打开就能继续用。")
             Text("如果在系统里强制停止浮序，或手机管家把浮序强行清掉，手机会关掉辅助功能。这是系统限制，浮序不能自己打开，需要再到这里开一次。")
             val power = context.getSystemService(PowerManager::class.java)

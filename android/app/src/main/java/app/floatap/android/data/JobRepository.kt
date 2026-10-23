@@ -1,7 +1,5 @@
 package app.floatap.android.data
 
-import app.floatap.android.domain.ColorCondition
-import app.floatap.android.domain.ColorMismatchAction
 import app.floatap.android.domain.Job
 import app.floatap.android.domain.JobSummary
 import app.floatap.android.domain.MAX_JOBS
@@ -104,37 +102,19 @@ private fun Job.toEntity(now: Long) = JobEntity(
     pauseOnUserTouch = pauseOnUserTouch,
 )
 
-private fun StepEntity.toDomain(): Step {
-    val color = if (colorArgb != null && colorX != null && colorY != null) {
-        ColorCondition(
-            x = colorX,
-            y = colorY,
-            sampleArgb = colorArgb,
-            tolerance = colorTolerance ?: 32,
-            onMismatch = if (colorOnMismatch == ColorMismatchAction.SKIP.name) {
-                ColorMismatchAction.SKIP
-            } else {
-                ColorMismatchAction.STOP
-            },
-        )
-    } else {
-        null
-    }
-    return Step(
-        id = id,
-        order = stepOrder,
-        name = name,
-        x = x,
-        y = y,
-        displayWidth = displayWidth,
-        displayHeight = displayHeight,
-        rotation = rotation,
-        waitMode = if (waitMode == WaitMode.RANGE.name) WaitMode.RANGE else WaitMode.FIXED,
-        waitMinMs = waitMinMs,
-        waitMaxMs = waitMaxMs,
-        color = color,
-    )
-}
+private fun StepEntity.toDomain() = Step(
+    id = id,
+    order = stepOrder,
+    name = name,
+    x = x,
+    y = y,
+    displayWidth = displayWidth,
+    displayHeight = displayHeight,
+    rotation = rotation,
+    waitMode = if (waitMode == WaitMode.RANGE.name) WaitMode.RANGE else WaitMode.FIXED,
+    waitMinMs = waitMinMs,
+    waitMaxMs = waitMaxMs,
+)
 
 private fun Step.toEntity(jobId: Long) = StepEntity(
     id = 0,
@@ -149,11 +129,11 @@ private fun Step.toEntity(jobId: Long) = StepEntity(
     waitMode = waitMode.name,
     waitMinMs = waitMinMs,
     waitMaxMs = waitMaxMs,
-    colorX = color?.x,
-    colorY = color?.y,
-    colorArgb = color?.sampleArgb,
-    colorTolerance = color?.tolerance,
-    colorOnMismatch = color?.onMismatch?.name,
+    colorX = null,
+    colorY = null,
+    colorArgb = null,
+    colorTolerance = null,
+    colorOnMismatch = null,
 )
 
 private fun RunEntity.toDomain() = RunRecord(

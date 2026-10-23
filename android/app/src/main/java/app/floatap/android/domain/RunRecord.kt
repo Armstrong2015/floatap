@@ -18,5 +18,5 @@ fun StopReason.label(): String = when (this) {
     StopReason.SCHEDULE_END -> "到达结束时刻"
     StopReason.PERMISSION -> "权限或手势失败"
     StopReason.DISPLAY_CHANGED -> "屏幕尺寸变化"
-    StopReason.COLOR_MISMATCH -> "颜色条件不匹配"
+    StopReason.COLOR_MISMATCH -> "已停止"
 }

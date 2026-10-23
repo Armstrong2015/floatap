@@ -7,7 +7,7 @@ import org.junit.Test
 
 class JobJsonTest {
     @Test
-    fun roundTripKeepsScheduleAndColor() {
+    fun roundTripKeepsSchedule() {
         val job = Job(
             name = "每日",
             steps = listOf(
@@ -22,13 +22,6 @@ class JobJsonTest {
                     waitMinMs = 400,
                     waitMaxMs = 600,
                     waitMode = WaitMode.RANGE,
-                    color = ColorCondition(
-                        x = 10,
-                        y = 20,
-                        sampleArgb = 0xFF112233.toInt(),
-                        tolerance = 24,
-                        onMismatch = ColorMismatchAction.SKIP,
-                    ),
                 ),
             ),
             durationMs = 60_000,
@@ -44,8 +37,7 @@ class JobJsonTest {
         assertEquals(9 * 60, parsed.scheduleStartMinutes)
         assertEquals(18 * 60, parsed.scheduleEndMinutes)
         assertEquals(WaitMode.RANGE, parsed.steps[0].waitMode)
-        assertEquals(0xFF112233.toInt(), parsed.steps[0].color?.sampleArgb)
-        assertEquals(ColorMismatchAction.SKIP, parsed.steps[0].color?.onMismatch)
+        assertEquals(400L, parsed.steps[0].waitMinMs)
     }
 
     @Test
@@ -80,6 +72,26 @@ class JobJsonTest {
         )
         val parsed = jobFromJson(jobToJson(job))
         assertNull(parsed.scheduleStartMinutes)
-        assertNull(parsed.steps[0].color)
+    }
+
+    @Test
+    fun ignoresLegacyColorFieldOnImport() {
+        val json = """
+            {
+              "format": 1,
+              "name": "旧色",
+              "durationMs": 10000,
+              "steps": [{
+                "name": "点",
+                "x": 1, "y": 2,
+                "displayWidth": 100, "displayHeight": 200, "rotation": 0,
+                "wait": { "mode": "fixed", "minMs": 500, "maxMs": 500 },
+                "color": { "x": 1, "y": 2, "argb": 1, "tolerance": 10, "onMismatch": "stop" }
+              }]
+            }
+        """.trimIndent()
+        val parsed = jobFromJson(json)
+        assertEquals("旧色", parsed.name)
+        assertEquals(1, parsed.steps.size)
     }
 }

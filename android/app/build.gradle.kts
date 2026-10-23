@@ -13,8 +13,8 @@ android {
         applicationId = "app.floatap.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "2.2.0"
+        versionCode = 12
+        versionName = "2.2.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

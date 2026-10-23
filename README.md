@@ -5,12 +5,12 @@
 在自己的安卓手机或 Windows 电脑上，选定屏幕坐标，按间隔或顺序把点击做完。
 
 [![平台](https://img.shields.io/badge/平台-Android_8.0+_·_Windows-3DDC84?style=flat-square&logo=android&logoColor=white)](docs/03-产品设计开发文档.md)
-[![安卓](https://img.shields.io/badge/安卓-2.1.0-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/tag/v2.1.0)
+[![安卓](https://img.shields.io/badge/安卓-2.2.3-1f6feb?style=flat-square)](https://github.com/Armstrong2015/floatap/releases/tag/v2.2.3)
 [![Windows](https://img.shields.io/badge/Windows-1.0.5-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/Armstrong2015/floatap/releases/tag/v-windows-1.0.5)
 [![APK](https://img.shields.io/github/actions/workflow/status/Armstrong2015/floatap/build-apk.yml?style=flat-square&label=APK)](https://github.com/Armstrong2015/floatap/actions)
 [![网络](https://img.shields.io/badge/网络-不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
 
-安卓工程在 [`android`](android)，Windows 工程在 [`windows`](windows)。安卓正式版 2.1.0 支持多步与定时；2.2.0（M3）增加导入导出、运行记录与颜色条件。Windows 正式版 1.0.5 共用同一套 `format: 1` 作业 JSON。画面匹配留到 M4。
+安卓工程在 [`android`](android)，Windows 工程在 [`windows`](windows)。安卓正式版 [2.2.3](https://github.com/Armstrong2015/floatap/releases/tag/v2.2.3) 支持多步、定时、作业导入导出与本机运行记录。Windows 正式版 1.0.5 共用同一套 `format: 1` 作业 JSON。局部画面匹配留到 M4。
 
 </div>
 
@@ -30,7 +30,7 @@ flowchart LR
 
 ### 安卓
 
-当前正式包是 [floatap-2.1.0.apk](https://github.com/Armstrong2015/floatap/releases/tag/v2.1.0)。多步作业按顺序点击；可设开始与结束时刻。说明见 [2.1.0 发布说明](docs/releases/v2.1.0.md)。
+当前正式包是 [floatap-2.2.3.apk](https://github.com/Armstrong2015/floatap/releases/tag/v2.2.3)。多步、定时、导入导出与运行记录。说明见 [2.2.3 发布说明](docs/releases/v2.2.3.md)。
 
 手机需要允许安装未知来源应用。如果之前装过调试包，要先卸载再装。装好后重新打开悬浮窗和辅助功能。
 
@@ -78,7 +78,7 @@ flowchart LR
   M2 --> M5["M5 Windows<br/>1.0.0"]
   M2 --> M2b["定时开始<br/>2.1.0"]
   M5 --> M3["M3 颜色条件"]
-  M2b --> M3["M3 颜色与记录<br/>2.2.0"]
+  M2b --> M3["M3 导入导出<br/>2.2.2"]
   M3 --> M4["M4 画面匹配"]
 
   classDef done fill:#1f6feb,stroke:#1f6feb,color:#ffffff
@@ -95,7 +95,7 @@ flowchart LR
 | M2 | 多点顺序循环、每步等待、循环次数（安卓 2.0.0） |
 | M5 | Windows 桌面端，同一份 format:1 JSON（windows 1.0.5） |
 | 定时开始 | 开始时刻、结束时刻（安卓 2.1.0） |
-| M3 | 导入导出、运行记录、像素颜色条件（安卓 2.2.0） |
+| M3 | 导入导出、本机运行记录（安卓 2.2.2；颜色条件已撤销） |
 | M4 | 局部画面匹配，以及如果 / 否则 |
 
 ## 运行时各管一段

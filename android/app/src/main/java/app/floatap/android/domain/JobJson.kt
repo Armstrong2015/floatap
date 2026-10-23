@@ -30,16 +30,6 @@ fun jobToJson(job: Job): String {
         wait.put("minMs", step.waitMinMs)
         wait.put("maxMs", step.waitMaxMs)
         item.put("wait", wait)
-        val color = step.color
-        if (color != null) {
-            val c = JSONObject()
-            c.put("x", color.x)
-            c.put("y", color.y)
-            c.put("argb", color.sampleArgb)
-            c.put("tolerance", color.tolerance)
-            c.put("onMismatch", if (color.onMismatch == ColorMismatchAction.SKIP) "skip" else "stop")
-            item.put("color", c)
-        }
         steps.put(item)
     }
     root.put("steps", steps)
@@ -65,22 +55,6 @@ fun jobFromJson(text: String): Job {
         val mode = wait.optString("mode", "fixed")
         val minMs = wait.optLong("minMs", 500)
         val maxMs = wait.optLong("maxMs", minMs)
-        val colorObj = item.optJSONObject("color")
-        val color = if (colorObj == null) {
-            null
-        } else {
-            ColorCondition(
-                x = colorObj.getInt("x"),
-                y = colorObj.getInt("y"),
-                sampleArgb = colorObj.getInt("argb"),
-                tolerance = colorObj.optInt("tolerance", 32),
-                onMismatch = if (colorObj.optString("onMismatch") == "skip") {
-                    ColorMismatchAction.SKIP
-                } else {
-                    ColorMismatchAction.STOP
-                },
-            )
-        }
         steps += Step(
             order = i,
             name = item.optString("name", "点击").ifBlank { "点击" },
@@ -92,7 +66,6 @@ fun jobFromJson(text: String): Job {
             waitMode = if (mode == "range") WaitMode.RANGE else WaitMode.FIXED,
             waitMinMs = minMs,
             waitMaxMs = maxMs,
-            color = color,
         )
     }
     return Job(

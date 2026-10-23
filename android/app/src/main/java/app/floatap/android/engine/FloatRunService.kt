@@ -22,13 +22,10 @@ import app.floatap.android.MainActivity
 import app.floatap.android.Prefs
 import app.floatap.android.R
 import app.floatap.android.a11y.ClickBridge
-import app.floatap.android.capture.ScreenCapture
-import app.floatap.android.domain.ColorMismatchAction
 import app.floatap.android.domain.RunPhase
 import app.floatap.android.domain.RunRecord
 import app.floatap.android.domain.Step
 import app.floatap.android.domain.StopReason
-import app.floatap.android.domain.colorMatches
 import app.floatap.android.domain.displayMatches
 import app.floatap.android.domain.formatMinutes
 import app.floatap.android.domain.isPastEnd
@@ -45,7 +42,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.min
 
 class FloatRunService : Service() {
@@ -286,14 +282,6 @@ class FloatRunService : Service() {
             windows().showNote(detail)
             return
         }
-        val needsColor = job.steps.any { it.color != null }
-        if (needsColor && !ScreenCapture.isReady()) {
-            val detail = "这份作业用了颜色条件，请先到设置里允许读取画面"
-            stopRun(StopReason.PERMISSION, cancelLoop = false)
-            RunBus.message.value = detail
-            windows().showNote(detail)
-            return
-        }
         runSession = RunSession(
             jobId = job.id,
             jobName = job.name,
@@ -363,41 +351,6 @@ class FloatRunService : Service() {
             if (reason != null) {
                 stopRun(reason, cancelLoop = false)
                 return
-            }
-            val color = current.color
-            if (color != null) {
-                val actual = withContext(Dispatchers.IO) {
-                    ScreenCapture.awaitPixel(color.x, color.y)
-                }
-                if (actual == null) {
-                    val detail = "读不到画面颜色，请重新允许读取画面"
-                    stopRun(StopReason.PERMISSION, cancelLoop = false)
-                    RunBus.message.value = detail
-                    windows().showNote(detail)
-                    return
-                }
-                if (!colorMatches(color.sampleArgb, actual, color.tolerance)) {
-                    when (color.onMismatch) {
-                        ColorMismatchAction.STOP -> {
-                            stopRun(StopReason.COLOR_MISMATCH, cancelLoop = false)
-                            return
-                        }
-                        ColorMismatchAction.SKIP -> {
-                            val skipped = index + 1
-                            val nextIndex = if (index + 1 < stepCount) index + 1 else 0
-                            if (nextIndex == 0) {
-                                progress = progress.copy(loops = progress.loops + 1)
-                            }
-                            index = nextIndex
-                            notify("「${job.name}」第 $skipped 步颜色不符，已跳过")
-                            if (job.loopLimit != null && progress.loops >= job.loopLimit && nextIndex == 0) {
-                                stopRun(StopReason.LOOP_LIMIT, cancelLoop = false)
-                                return
-                            }
-                            continue
-                        }
-                    }
-                }
             }
             overlay?.flash(current.x, current.y)
             val ok = ClickBridge.tap(current.x, current.y, runId)
@@ -573,8 +526,8 @@ class FloatRunService : Service() {
             StopReason.CLICK_LIMIT -> "到达点击次数，已停止"
             StopReason.LOOP_LIMIT -> "循环完成，已停止"
             StopReason.SCHEDULE_END -> "到达结束时刻，已停止"
-            StopReason.COLOR_MISMATCH -> "颜色条件不匹配，已停止"
             StopReason.DISPLAY_CHANGED -> "屏幕尺寸变了，已停止"
+            StopReason.COLOR_MISMATCH -> "已停止"
             StopReason.PERMISSION -> "无法继续点击，已停止"
             else -> "已停止"
         }
@@ -645,13 +598,11 @@ class FloatRunService : Service() {
         val notification = buildNotification(text)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                if (ScreenCapture.isReady()) {
-                    type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-                }
-                startForeground(NOTIFICATION_ID, notification, type)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST)
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
