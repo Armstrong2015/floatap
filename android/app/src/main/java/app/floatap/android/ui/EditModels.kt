@@ -15,6 +15,7 @@ import app.floatap.android.domain.JobDraft
 import app.floatap.android.domain.Step
 import app.floatap.android.domain.WaitMode
 import app.floatap.android.domain.checkDraft
+import app.floatap.android.domain.parseHourMinute
 import app.floatap.android.overlay.PickerBus
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -39,11 +40,22 @@ data class EditUi(
     val loopText: String = "",
     val durationText: String = "60",
     val clickLimitText: String = "",
+    val useScheduleStart: Boolean = false,
+    val startHourText: String = "09",
+    val startMinuteText: String = "00",
+    val useScheduleEnd: Boolean = false,
+    val endHourText: String = "18",
+    val endMinuteText: String = "00",
     val countdown: Int = 3,
     val pauseOnTouch: Boolean = true,
     val error: String? = null,
     val warning: String? = null,
 )
+
+private fun minutesToHourMinute(minutes: Int): Pair<String, String> {
+    val clamped = minutes.coerceIn(0, 23 * 60 + 59)
+    return "%02d".format(clamped / 60) to "%02d".format(clamped % 60)
+}
 
 private fun Step.toUi(): StepUi {
     val ranged = waitMaxMs > waitMinMs
@@ -78,6 +90,8 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                 if (job == null) {
                     state = state.copy(ready = true, error = "找不到这份作业")
                 } else {
+                    val startHm = job.scheduleStartMinutes?.let { minutesToHourMinute(it) }
+                    val endHm = job.scheduleEndMinutes?.let { minutesToHourMinute(it) }
                     state = EditUi(
                         ready = true,
                         name = job.name,
@@ -85,6 +99,12 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                         loopText = job.loopLimit?.toString().orEmpty(),
                         durationText = job.durationMs?.div(1000)?.toString().orEmpty(),
                         clickLimitText = job.clickLimit?.toString().orEmpty(),
+                        useScheduleStart = job.scheduleStartMinutes != null,
+                        startHourText = startHm?.first ?: "09",
+                        startMinuteText = startHm?.second ?: "00",
+                        useScheduleEnd = job.scheduleEndMinutes != null,
+                        endHourText = endHm?.first ?: "18",
+                        endMinuteText = endHm?.second ?: "00",
                         countdown = job.countdownSec,
                         pauseOnTouch = job.pauseOnUserTouch,
                     )
@@ -153,9 +173,29 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
         state = block(state)
     }
 
+    fun scheduleStartMinutesOrNull(ui: EditUi = state): Int? {
+        if (!ui.useScheduleStart) return null
+        return parseHourMinute(ui.startHourText, ui.startMinuteText)
+    }
+
+    fun scheduleEndMinutesOrNull(ui: EditUi = state): Int? {
+        if (!ui.useScheduleEnd) return null
+        return parseHourMinute(ui.endHourText, ui.endMinuteText)
+    }
+
     fun save(allowMissingPoint: Boolean = false, onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch {
             val ui = state
+            val startMin = if (ui.useScheduleStart) {
+                parseHourMinute(ui.startHourText, ui.startMinuteText) ?: -1
+            } else {
+                null
+            }
+            val endMin = if (ui.useScheduleEnd) {
+                parseHourMinute(ui.endHourText, ui.endMinuteText) ?: -1
+            } else {
+                null
+            }
             val checked = checkDraft(
                 JobDraft(
                     name = ui.name.trim(),
@@ -173,6 +213,8 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                     isNew = currentId == 0L,
                     allowMissingPoint = allowMissingPoint,
                     loopLimit = ui.loopText.toIntOrNull(),
+                    scheduleStartMinutes = startMin,
+                    scheduleEndMinutes = endMin,
                     steps = ui.steps.map { step ->
                         app.floatap.android.domain.StepDraft(
                             name = step.name.trim(),
@@ -213,6 +255,8 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                     durationMs = checked.durationMs,
                     clickLimit = ui.clickLimitText.toIntOrNull()?.takeIf { it > 0 },
                     loopLimit = checked.loopLimit,
+                    scheduleStartMinutes = checked.scheduleStartMinutes,
+                    scheduleEndMinutes = checked.scheduleEndMinutes,
                     countdownSec = ui.countdown,
                     pauseOnUserTouch = ui.pauseOnTouch,
                 ),

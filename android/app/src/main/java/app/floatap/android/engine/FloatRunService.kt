@@ -1,5 +1,6 @@
 package app.floatap.android.engine
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -25,6 +26,10 @@ import app.floatap.android.domain.RunPhase
 import app.floatap.android.domain.Step
 import app.floatap.android.domain.StopReason
 import app.floatap.android.domain.displayMatches
+import app.floatap.android.domain.formatMinutes
+import app.floatap.android.domain.isPastEnd
+import app.floatap.android.domain.isPastStart
+import app.floatap.android.domain.millisUntilStart
 import app.floatap.android.isAccessibilityEnabled
 import app.floatap.android.overlay.PickerBus
 import app.floatap.android.overlay.ScreenOverlay
@@ -44,6 +49,7 @@ class FloatRunService : Service() {
     private var overlay: ScreenOverlay? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var pausedFrom = RunPhase.RUNNING
+    private var scheduleAlarmPending: PendingIntent? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -56,7 +62,11 @@ class FloatRunService : Service() {
                         RunBus.collapseHost.value = true
                     }
                 }
-                ACTION_START -> beginRun(intent.getLongExtra(EXTRA_JOB_ID, 0L))
+                ACTION_START -> beginRun(
+                    intent.getLongExtra(EXTRA_JOB_ID, 0L),
+                    skipScheduleStart = intent.getBooleanExtra(EXTRA_SKIP_SCHEDULE, false),
+                )
+                ACTION_SCHEDULE_WAKE -> Unit // wakes the process; wait loop continues via delay/alarm
                 ACTION_PAUSE -> pauseInternal()
                 ACTION_RESUME -> resumeInternal()
                 ACTION_STOP -> stopRun(StopReason.USER)
@@ -212,8 +222,9 @@ class FloatRunService : Service() {
         PickerBus.pending = app.floatap.android.overlay.PickResult(x, y, width, height, rotation, stepIndex)
     }
 
-    private fun beginRun(jobId: Long) {
+    private fun beginRun(jobId: Long, skipScheduleStart: Boolean = false) {
         promote("准备点击")
+        cancelScheduleAlarm()
         runJob?.cancel()
         ClickBridge.gate.close()
         val runId = SystemClock.elapsedRealtime()
@@ -221,16 +232,17 @@ class FloatRunService : Service() {
         Prefs(this).lastJobId = jobId
         runJob = scope.launch {
             try {
-                execute(jobId, runId)
+                execute(jobId, runId, skipScheduleStart)
             } catch (_: kotlinx.coroutines.CancellationException) {
                 ClickBridge.gate.close()
+                cancelScheduleAlarm()
             } catch (_: Exception) {
                 stopRun(StopReason.PERMISSION, cancelLoop = false)
             }
         }
     }
 
-    private suspend fun execute(jobId: Long, runId: Long) {
+    private suspend fun execute(jobId: Long, runId: Long, skipScheduleStart: Boolean) {
         val repository = (application as FloatApp).repository
         val job = repository.get(jobId)
         if (job == null || job.steps.isEmpty()) {
@@ -253,7 +265,32 @@ class FloatRunService : Service() {
             windows().showNote(detail)
             return
         }
+        val endMinutes = job.scheduleEndMinutes
+        if (endMinutes != null && isPastEnd(endMinutes)) {
+            val detail = "结束时刻 ${formatMinutes(endMinutes)} 已过，请改时间后再开始"
+            stopRun(StopReason.USER, cancelLoop = false)
+            RunBus.message.value = detail
+            windows().showNote(detail)
+            return
+        }
         setPhase(RunPhase.ARMED)
+        val startMinutes = job.scheduleStartMinutes
+        var skipStart = skipScheduleStart
+        if (startMinutes != null && !skipStart && isPastStart(startMinutes)) {
+            skipStart = true
+            val note = "开始时刻 ${formatMinutes(startMinutes)} 已过，改为立即开始"
+            RunBus.message.value = note
+            windows().showNote(note)
+        }
+        if (startMinutes != null && !skipStart) {
+            val label = formatMinutes(startMinutes)
+            notify("「${job.name}」等待 $label 开始")
+            val waited = waitUntilScheduleStart(startMinutes, job.name)
+            cancelScheduleAlarm()
+            if (!waited) return
+            while (RunBus.phase.value == RunPhase.PAUSED) delay(200)
+            if (RunBus.phase.value != RunPhase.ARMED) return
+        }
         var seconds = job.countdownSec
         notify("即将运行「${job.name}」")
         while (seconds > 0) {
@@ -289,6 +326,10 @@ class FloatRunService : Service() {
             }
             if (!displayMatches(current, readDisplay())) {
                 stopRun(StopReason.DISPLAY_CHANGED, cancelLoop = false)
+                return
+            }
+            if (endMinutes != null && isPastEnd(endMinutes)) {
+                stopRun(StopReason.SCHEDULE_END, cancelLoop = false)
                 return
             }
             val now = SystemClock.elapsedRealtime()
@@ -358,6 +399,64 @@ class FloatRunService : Service() {
         }
     }
 
+    /** Returns false if the run was stopped / cancelled while waiting. */
+    private suspend fun waitUntilScheduleStart(startMinutes: Int, jobName: String): Boolean {
+        while (true) {
+            when (RunBus.phase.value) {
+                RunPhase.PAUSED -> {
+                    delay(200)
+                    continue
+                }
+                RunPhase.ARMED -> Unit
+                else -> return false
+            }
+            val remaining = millisUntilStart(startMinutes) ?: return true
+            val label = formatMinutes(startMinutes)
+            notify("「$jobName」等待 $label 开始")
+            scheduleWakeAlarm(remaining)
+            val slice = min(remaining, 15_000L)
+            delay(slice)
+            cancelScheduleAlarm()
+            if (RunBus.phase.value != RunPhase.ARMED && RunBus.phase.value != RunPhase.PAUSED) {
+                return false
+            }
+        }
+    }
+
+    private fun scheduleWakeAlarm(delayMs: Long) {
+        cancelScheduleAlarm()
+        if (delayMs <= 0) return
+        val am = getSystemService(AlarmManager::class.java) ?: return
+        val intent = Intent(this, FloatRunService::class.java).setAction(ACTION_SCHEDULE_WAKE)
+        val pending = PendingIntent.getService(
+            this,
+            REQUEST_SCHEDULE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        scheduleAlarmPending = pending
+        val trigger = System.currentTimeMillis() + delayMs
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pending)
+            } else {
+                @Suppress("DEPRECATION")
+                am.setExact(AlarmManager.RTC_WAKEUP, trigger, pending)
+            }
+        } catch (_: SecurityException) {
+            // Exact alarm not granted; segmented delay above still advances the wait.
+            android.util.Log.w(TAG, "exact alarm denied; relying on foreground delay")
+        }
+    }
+
+    private fun cancelScheduleAlarm() {
+        val pending = scheduleAlarmPending ?: return
+        val am = getSystemService(AlarmManager::class.java)
+        am?.cancel(pending)
+        pending.cancel()
+        scheduleAlarmPending = null
+    }
+
     private fun onOutsideTouch(event: android.view.MotionEvent) {
         if (!RunBus.pauseOnUserTouch) return
         val phase = RunBus.phase.value
@@ -385,6 +484,7 @@ class FloatRunService : Service() {
 
     private fun stopRun(reason: StopReason, cancelLoop: Boolean = true) {
         ClickBridge.gate.close()
+        cancelScheduleAlarm()
         if (cancelLoop) runJob?.cancel()
         runJob = null
         releaseWake()
@@ -395,6 +495,7 @@ class FloatRunService : Service() {
             StopReason.DURATION -> "到达设定时长，已停止"
             StopReason.CLICK_LIMIT -> "到达点击次数，已停止"
             StopReason.LOOP_LIMIT -> "循环完成，已停止"
+            StopReason.SCHEDULE_END -> "到达结束时刻，已停止"
             StopReason.DISPLAY_CHANGED -> "屏幕尺寸变了，已停止"
             StopReason.PERMISSION -> "无法继续点击，已停止"
             else -> "已停止"
@@ -422,7 +523,11 @@ class FloatRunService : Service() {
             }
             created.onStart = {
                 val id = Prefs(this).lastJobId
-                if (id == 0L) windows().showNote("先选择一份作业") else beginRun(id)
+                if (id == 0L) {
+                    windows().showNote("先选择一份作业")
+                } else {
+                    beginRun(id, skipScheduleStart = false)
+                }
             }
             created.onPause = { pauseInternal() }
             created.onOutsideTouch = { event -> onOutsideTouch(event) }
@@ -535,14 +640,18 @@ class FloatRunService : Service() {
         private const val ACTION_STOP = "app.floatap.android.STOP"
         private const val ACTION_PICK = "app.floatap.android.PICK"
         private const val ACTION_SHOW_BALL = "app.floatap.android.BALL"
+        private const val ACTION_SCHEDULE_WAKE = "app.floatap.android.SCHEDULE_WAKE"
         private const val EXTRA_JOB_ID = "job_id"
         private const val EXTRA_COLLAPSE = "collapse"
+        private const val EXTRA_SKIP_SCHEDULE = "skip_schedule"
+        private const val REQUEST_SCHEDULE = 7
         private const val TAG = "Floatap"
 
-        fun startJob(context: Context, jobId: Long) {
+        fun startJob(context: Context, jobId: Long, skipScheduleStart: Boolean = false) {
             val intent = Intent(context, FloatRunService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_JOB_ID, jobId)
+                .putExtra(EXTRA_SKIP_SCHEDULE, skipScheduleStart)
             ContextCompat.startForegroundService(context, intent)
         }
 

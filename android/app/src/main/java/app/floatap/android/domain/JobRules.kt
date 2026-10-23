@@ -10,11 +10,13 @@ enum class DraftIssue(val message: String) {
     INTERVAL("间隔要在 50 毫秒到 1 小时之间"),
     INTERVAL_MAX("填写最大间隔"),
     INTERVAL_ORDER("最大间隔不能小于最小间隔"),
-    NO_STOP("填写持续时长或点击次数，避免一直点下去"),
+    NO_STOP("填写持续时长、点击次数或结束时刻，避免一直点下去"),
     COUNTDOWN("倒计时要在 0 到 10 秒"),
     TOO_MANY("作业已有 50 个，先删除或等导出功能"),
     LOOP("循环次数要在 1 到 9999"),
     NO_STEPS("至少要有一步"),
+    SCHEDULE_RANGE("开始或结束时刻无效"),
+    SCHEDULE_ORDER("结束时刻要晚于开始时刻"),
 }
 
 data class StepDraft(
@@ -53,6 +55,8 @@ data class JobDraft(
     val allowMissingPoint: Boolean = false,
     val steps: List<StepDraft>? = null,
     val loopLimit: Int? = null,
+    val scheduleStartMinutes: Int? = null,
+    val scheduleEndMinutes: Int? = null,
 )
 
 data class CheckedDraft(
@@ -64,6 +68,8 @@ data class CheckedDraft(
     val durationMs: Long?,
     val steps: List<CheckedStep> = emptyList(),
     val loopLimit: Int? = null,
+    val scheduleStartMinutes: Int? = null,
+    val scheduleEndMinutes: Int? = null,
 ) {
     fun message(): String? {
         val found = issue ?: return null
@@ -91,6 +97,11 @@ fun checkDraft(draft: JobDraft): CheckedDraft {
     val failed = checkedSteps.indexOfFirst { it.issue != null }
     val durationMs = draft.durationSec?.takeIf { it > 0 }?.times(1000)
     val loop = draft.loopLimit
+    val startMin = draft.scheduleStartMinutes
+    val endMin = draft.scheduleEndMinutes
+    val scheduleBad = (startMin != null && startMin !in MIN_SCHEDULE_MINUTE..MAX_SCHEDULE_MINUTE) ||
+        (endMin != null && endMin !in MIN_SCHEDULE_MINUTE..MAX_SCHEDULE_MINUTE)
+    val scheduleOrderBad = startMin != null && endMin != null && endMin <= startMin
     val issue = when {
         draft.isNew && draft.existingCount >= MAX_JOBS -> DraftIssue.TOO_MANY
         draft.name.isBlank() -> DraftIssue.NAME_EMPTY
@@ -98,7 +109,9 @@ fun checkDraft(draft: JobDraft): CheckedDraft {
         failed >= 0 -> checkedSteps[failed].issue
         loop != null && loop !in 1..9999 -> DraftIssue.LOOP
         draft.countdownSec !in 0..10 -> DraftIssue.COUNTDOWN
-        durationMs == null && draft.clickLimit == null && loop == null -> DraftIssue.NO_STOP
+        scheduleBad -> DraftIssue.SCHEDULE_RANGE
+        scheduleOrderBad -> DraftIssue.SCHEDULE_ORDER
+        durationMs == null && draft.clickLimit == null && loop == null && endMin == null -> DraftIssue.NO_STOP
         else -> null
     }
     val first = checkedSteps.firstOrNull()?.step
@@ -111,6 +124,8 @@ fun checkDraft(draft: JobDraft): CheckedDraft {
         durationMs = durationMs,
         steps = checkedSteps.map { it.step },
         loopLimit = loop?.takeIf { it in 1..9999 },
+        scheduleStartMinutes = startMin?.takeIf { it in MIN_SCHEDULE_MINUTE..MAX_SCHEDULE_MINUTE },
+        scheduleEndMinutes = endMin?.takeIf { it in MIN_SCHEDULE_MINUTE..MAX_SCHEDULE_MINUTE },
     )
 }
 

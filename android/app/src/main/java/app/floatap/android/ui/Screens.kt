@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,6 +52,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.floatap.android.Prefs
 import app.floatap.android.R
 import app.floatap.android.canDrawOverlay
+import app.floatap.android.domain.formatMinutes
+import app.floatap.android.domain.isPastEnd
+import app.floatap.android.domain.isPastStart
 import app.floatap.android.engine.FloatRunService
 import app.floatap.android.engine.RunBus
 import app.floatap.android.isAccessibilityEnabled
@@ -136,6 +140,7 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
     val context = LocalContext.current
     val vm: EditViewModel = viewModel(key = "edit-$jobId", factory = EditViewModel.factory(jobId))
     val ui = vm.state
+    var pastStartDialog by remember { mutableStateOf(false) }
     val collapse by RunBus.collapseHost.collectAsState()
     LaunchedEffect(collapse) {
         if (!collapse) return@LaunchedEffect
@@ -152,6 +157,52 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    fun launchJob(skipScheduleStart: Boolean) {
+        val blocked = permissionBlock(context.canDrawOverlay(), context.isAccessibilityEnabled())
+        if (blocked != null) {
+            vm.update { it.copy(error = blocked) }
+            return
+        }
+        val endMin = vm.scheduleEndMinutesOrNull()
+        if (endMin != null && isPastEnd(endMin)) {
+            vm.update { it.copy(error = "结束时刻 ${formatMinutes(endMin)} 已过，请改时间后再开始") }
+            return
+        }
+        vm.save { id ->
+            FloatRunService.startJob(context, id, skipScheduleStart = skipScheduleStart)
+            val startMin = vm.scheduleStartMinutesOrNull()
+            val waiting = startMin != null && !skipScheduleStart && !isPastStart(startMin)
+            vm.update {
+                it.copy(
+                    warning = if (waiting) {
+                        "已开始「${ui.name.trim()}」。等待 ${formatMinutes(startMin!!)} 后再倒计时点击；请先切到要点的应用。"
+                    } else {
+                        "已开始「${ui.name.trim()}」。请从最近任务切到要点的应用，倒计时结束后才会点击。"
+                    },
+                )
+            }
+        }
+    }
+
+    if (pastStartDialog) {
+        val startLabel = vm.scheduleStartMinutesOrNull()?.let { formatMinutes(it) } ?: ""
+        AlertDialog(
+            onDismissRequest = { pastStartDialog = false },
+            title = { Text("开始时刻已过") },
+            text = { Text("设定的开始时刻 $startLabel 已经过了。要立刻开始，还是取消后改时间？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pastStartDialog = false
+                    launchJob(skipScheduleStart = true)
+                }) { Text("立即开始") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pastStartDialog = false }) { Text("取消") }
+            },
+        )
+    }
+
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(if (jobId == 0L) "新建作业" else "编辑作业") },
@@ -206,7 +257,7 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                 value = ui.loopText,
                 onValueChange = { value -> vm.update { it.copy(loopText = value.filter(Char::isDigit)) } },
                 label = { Text("循环次数，留空表示不限") },
-                supportingText = { Text("不限次数时，要填写持续时长或点击次数") },
+                supportingText = { Text("不限次数时，要填写持续时长、点击次数或结束时刻") },
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
@@ -220,6 +271,24 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
                 onValueChange = { value -> vm.update { it.copy(clickLimitText = value.filter(Char::isDigit)) } },
                 label = { Text("点击次数，可留空") },
                 modifier = Modifier.fillMaxWidth(),
+            )
+            ScheduleTimeRow(
+                enabled = ui.useScheduleStart,
+                onEnabled = { checked -> vm.update { it.copy(useScheduleStart = checked) } },
+                title = "定时开始",
+                hour = ui.startHourText,
+                minute = ui.startMinuteText,
+                onHour = { value -> vm.update { it.copy(startHourText = value.filter(Char::isDigit).take(2)) } },
+                onMinute = { value -> vm.update { it.copy(startMinuteText = value.filter(Char::isDigit).take(2)) } },
+            )
+            ScheduleTimeRow(
+                enabled = ui.useScheduleEnd,
+                onEnabled = { checked -> vm.update { it.copy(useScheduleEnd = checked) } },
+                title = "结束时刻",
+                hour = ui.endHourText,
+                minute = ui.endMinuteText,
+                onHour = { value -> vm.update { it.copy(endHourText = value.filter(Char::isDigit).take(2)) } },
+                onMinute = { value -> vm.update { it.copy(endMinuteText = value.filter(Char::isDigit).take(2)) } },
             )
             Text("开始倒计时 ${ui.countdown} 秒")
             Slider(
@@ -238,20 +307,54 @@ fun EditScreen(jobId: Long, onBack: () -> Unit) {
             Button(onClick = { vm.save { } }, modifier = Modifier.fillMaxWidth()) { Text("保存") }
             Button(
                 onClick = {
-                    val blocked = permissionBlock(context.canDrawOverlay(), context.isAccessibilityEnabled())
-                    if (blocked != null) {
-                        vm.update { it.copy(error = blocked) }
-                        return@Button
-                    }
-                    vm.save { id ->
-                        FloatRunService.startJob(context, id)
-                        vm.update {
-                            it.copy(warning = "已开始「${ui.name.trim()}」。请从最近任务切到要点的应用，倒计时结束后才会点击。")
-                        }
+                    val startMin = vm.scheduleStartMinutesOrNull()
+                    if (startMin != null && isPastStart(startMin)) {
+                        pastStartDialog = true
+                    } else {
+                        launchJob(skipScheduleStart = false)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(if (ui.name.isBlank()) "开始这一份" else "开始「${ui.name.trim()}」") }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleTimeRow(
+    enabled: Boolean,
+    onEnabled: (Boolean) -> Unit,
+    title: String,
+    hour: String,
+    minute: String,
+    onHour: (String) -> Unit,
+    onMinute: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(title)
+            Switch(checked = enabled, onCheckedChange = onEnabled)
+        }
+        if (enabled) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = hour,
+                    onValueChange = onHour,
+                    label = { Text("时") },
+                    modifier = Modifier.weight(1f),
+                )
+                Text(":")
+                OutlinedTextField(
+                    value = minute,
+                    onValueChange = onMinute,
+                    label = { Text("分") },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }

@@ -47,6 +47,32 @@ class JobRulesTest {
     }
 
     @Test
+    fun scheduleEndAloneCanStop() {
+        val checked = checkDraft(
+            sample(durationSec = null, clickLimit = null).copy(scheduleEndMinutes = 18 * 60),
+        )
+        assertNull(checked.issue)
+        assertEquals(18 * 60, checked.scheduleEndMinutes)
+    }
+
+    @Test
+    fun scheduleEndMustBeAfterStart() {
+        val checked = checkDraft(
+            sample().copy(
+                scheduleStartMinutes = 12 * 60,
+                scheduleEndMinutes = 10 * 60,
+            ),
+        )
+        assertEquals(DraftIssue.SCHEDULE_ORDER, checked.issue)
+    }
+
+    @Test
+    fun scheduleMinutesOutOfRangeRejected() {
+        val checked = checkDraft(sample().copy(scheduleStartMinutes = 25 * 60))
+        assertEquals(DraftIssue.SCHEDULE_RANGE, checked.issue)
+    }
+
+    @Test
     fun loopCountAloneCanStop() {
         val checked = checkDraft(
             sample(durationSec = null, clickLimit = null).copy(
