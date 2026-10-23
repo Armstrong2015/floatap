@@ -84,7 +84,7 @@ class Job:
     click_limit: Optional[int] = None
     loop_limit: Optional[int] = None
     countdown_sec: int = 3
-    pause_on_user_touch: bool = True
+    pause_on_user_touch: bool = False
     updated_at: int = 0
 
     def to_json(self) -> dict[str, Any]:
@@ -117,7 +117,7 @@ class Job:
             click_limit=_opt_int(raw.get("clickLimit")),
             loop_limit=_opt_int(raw.get("loopLimit")),
             countdown_sec=int(raw.get("countdownSec", 3)),
-            pause_on_user_touch=bool(raw.get("pauseOnUserTouch", True)),
+            pause_on_user_touch=bool(raw.get("pauseOnUserTouch", False)),
             updated_at=int(raw.get("updatedAt", 0)),
         )
 

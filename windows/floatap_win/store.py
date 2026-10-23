@@ -140,5 +140,5 @@ class JobStore:
             click_limit=None,
             loop_limit=None,
             countdown_sec=3,
-            pause_on_user_touch=True,
+            pause_on_user_touch=False,
         )

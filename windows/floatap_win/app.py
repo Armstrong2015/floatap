@@ -201,7 +201,7 @@ class FloatapApp:
         ).pack(fill="x", pady=(0, 8))
         ttk.Checkbutton(
             self.editor_body,
-            text="触摸屏幕时暂停（用户鼠标按下）",
+            text="运行中用户按下鼠标左键则暂停",
             variable=self.pause_var,
         ).pack(anchor="w", pady=8)
         ttk.Label(self.editor_body, textvariable=self.status, foreground="#555").pack(anchor="w")

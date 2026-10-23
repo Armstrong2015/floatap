@@ -7,7 +7,7 @@ from typing import Callable, Optional
 
 from . import click
 from .display import read_display
-from .hook import MousePauseHook
+from .hook import MousePauseWatcher
 from .models import Job, RunPhase, StopReason
 from .rules import display_matches
 from .schedule import Progress, next_stop, wait_millis
@@ -29,14 +29,12 @@ class RunEngine:
         self._pause = threading.Event()
         self._pause.set()
         self._lock = threading.Lock()
-        self._hook = MousePauseHook(self._user_touch)
-        self._hook.enabled = False
-        self._hook.start()
-        self._own_until = 0.0
+        self._watcher = MousePauseWatcher(self._user_touch)
+        self._watcher.start()
 
     def shutdown(self) -> None:
         self.stop(StopReason.USER)
-        self._hook.stop()
+        self._watcher.stop()
 
     def start(self, job: Job) -> None:
         with self._lock:
@@ -57,7 +55,8 @@ class RunEngine:
             self._stop.clear()
             self._pause.set()
             self._set_phase(RunPhase.ARMED)
-            self._hook.enabled = bool(job.pause_on_user_touch)
+            self._watcher.enabled = bool(job.pause_on_user_touch)
+            self._watcher.ignore_until = time.time() + 0.5
             self._thread = threading.Thread(
                 target=self._run_loop,
                 args=(job,),
@@ -86,7 +85,7 @@ class RunEngine:
                 return
             self._stop.set()
             self._pause.set()
-            self._hook.enabled = False
+            self._watcher.enabled = False
             self._set_phase(RunPhase.IDLE)
             labels = {
                 StopReason.USER: "已停止",
@@ -98,8 +97,6 @@ class RunEngine:
             self._on_message(labels.get(reason, "已停止"))
 
     def _user_touch(self) -> None:
-        if time.time() < self._own_until:
-            return
         if self.phase in (RunPhase.RUNNING, RunPhase.ARMED):
             self.pause()
 
@@ -116,6 +113,7 @@ class RunEngine:
         while remaining > 0:
             if self._stop.is_set():
                 return False
+            self._watcher.poll()
             if not self._pause.is_set():
                 saw_pause = True
                 time.sleep(0.05)
@@ -135,6 +133,7 @@ class RunEngine:
             while seconds > 0:
                 if self._stop.is_set():
                     return
+                self._watcher.poll()
                 if self.phase == RunPhase.PAUSED or not self._pause.is_set():
                     time.sleep(0.05)
                     continue
@@ -149,6 +148,7 @@ class RunEngine:
             while not self._pause.is_set():
                 if self._stop.is_set():
                     return
+                self._watcher.poll()
                 time.sleep(0.05)
             if self._stop.is_set():
                 return
@@ -163,6 +163,7 @@ class RunEngine:
                 while not self._pause.is_set():
                     if self._stop.is_set():
                         return
+                    self._watcher.poll()
                     time.sleep(0.05)
                 if self._stop.is_set():
                     return
@@ -202,7 +203,7 @@ class RunEngine:
                         self.stop(reason)
                         return
 
-                self._own_until = time.time() + 0.3
+                self._watcher.ignore_until = time.time() + 0.35
                 try:
                     click.tap(current.x, current.y)
                 except OSError as exc:
@@ -240,6 +241,6 @@ class RunEngine:
                     self.stop(after)
                     return
         finally:
-            self._hook.enabled = False
+            self._watcher.enabled = False
             if self.phase != RunPhase.IDLE:
                 self._set_phase(RunPhase.IDLE)
