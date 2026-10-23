@@ -27,6 +27,7 @@ data class Step(
     val waitMode: WaitMode = WaitMode.FIXED,
     val waitMinMs: Long,
     val waitMaxMs: Long,
+    val color: ColorCondition? = null,
 )
 
 data class Job(

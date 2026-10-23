@@ -3,13 +3,17 @@ package app.floatap.android.ui
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
@@ -19,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,9 +44,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -52,15 +59,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.floatap.android.Prefs
 import app.floatap.android.R
 import app.floatap.android.canDrawOverlay
+import app.floatap.android.capture.ScreenCapture
 import app.floatap.android.domain.formatMinutes
 import app.floatap.android.domain.isPastEnd
 import app.floatap.android.domain.isPastStart
+import app.floatap.android.domain.label
 import app.floatap.android.engine.FloatRunService
 import app.floatap.android.engine.RunBus
 import app.floatap.android.isAccessibilityEnabled
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,17 +94,62 @@ fun GuideScreen(onContinue: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onCreate: () -> Unit, onEdit: (Long) -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(
+    onCreate: () -> Unit,
+    onEdit: (Long) -> Unit,
+    onSettings: () -> Unit,
+    onRuns: () -> Unit,
+) {
     val context = LocalContext.current
     val vm: HomeViewModel = viewModel()
     val jobs by vm.jobs.collectAsState()
     val notice = vm.message ?: RunBus.message.collectAsState().value
+    val scope = rememberCoroutineScope()
     val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                val json = vm.exportAllJson()
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(json.toByteArray(Charsets.UTF_8))
+                    } ?: error("无法写入文件")
+                }
+                vm.clearMessage()
+                RunBus.message.value = "已导出全部作业"
+            } catch (error: Exception) {
+                RunBus.message.value = error.message ?: "导出失败"
+            }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                val text = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                        ?: error("无法读取文件")
+                }
+                val count = vm.importJson(text)
+                RunBus.message.value = "已导入 $count 份作业"
+            } catch (error: Exception) {
+                RunBus.message.value = error.message ?: "导入失败"
+            }
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("浮序") },
-                actions = { TextButton(onClick = onSettings) { Text("设置") } },
+                actions = {
+                    TextButton(onClick = onRuns) { Text("记录") }
+                    TextButton(onClick = onSettings) { Text("设置") }
+                },
             )
         },
     ) { padding ->
@@ -111,6 +168,16 @@ fun HomeScreen(onCreate: () -> Unit, onEdit: (Long) -> Unit, onSettings: () -> U
                 }) { Text("知道了") }
             }
             Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) { Text("新建作业") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                FilledTonalButton(
+                    onClick = { exportLauncher.launch("floatap-jobs.json") },
+                    modifier = Modifier.weight(1f),
+                ) { Text("导出") }
+                FilledTonalButton(
+                    onClick = { importLauncher.launch(arrayOf("application/json", "text/*")) },
+                    modifier = Modifier.weight(1f),
+                ) { Text("导入") }
+            }
             if (jobs.isEmpty()) {
                 Text("先打开悬浮窗和辅助功能，再新建一个单点作业。")
             } else {
@@ -417,6 +484,7 @@ private fun StepCard(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+            ColorConditionBlock(step = step, onChange = onChange)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { onMove(-1) }, enabled = index > 0) { Text("上移") }
                 TextButton(onClick = { onMove(1) }, enabled = index < count - 1) { Text("下移") }
@@ -426,10 +494,98 @@ private fun StepCard(
     }
 }
 
+@Composable
+private fun ColorConditionBlock(step: StepUi, onChange: (StepUi) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf<String?>(null) }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("颜色条件")
+        Switch(
+            checked = step.useColor,
+            onCheckedChange = { checked -> onChange(step.copy(useColor = checked)) },
+        )
+    }
+    if (!step.useColor) return
+    Text("点击前检查该步坐标的颜色是否接近样本。需先在设置里允许读取画面。")
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val argb = step.colorArgb
+        Box(
+            Modifier
+                .size(28.dp)
+                .background(
+                    if (argb == null) Color.LightGray else Color(argb),
+                    CircleShape,
+                ),
+        )
+        Text(if (argb == null) "尚未取色" else "已取色 #${Integer.toHexString(argb).uppercase()}")
+    }
+    FilledTonalButton(
+        onClick = {
+            if (step.x < 0 || step.y < 0) {
+                status = "先选点再取色"
+                return@FilledTonalButton
+            }
+            if (!ScreenCapture.isReady()) {
+                status = "请先到设置里允许读取画面"
+                return@FilledTonalButton
+            }
+            scope.launch {
+                val pixel = withContext(Dispatchers.IO) {
+                    ScreenCapture.awaitPixel(step.x, step.y)
+                }
+                if (pixel == null) {
+                    status = "读不到颜色，请重新允许读取画面"
+                } else {
+                    onChange(step.copy(colorArgb = pixel))
+                    status = "已取色"
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("在该步坐标取色") }
+    Text("容差 ${step.colorTolerance}")
+    Slider(
+        value = step.colorTolerance.toFloat(),
+        onValueChange = { value -> onChange(step.copy(colorTolerance = value.toInt())) },
+        valueRange = 0f..80f,
+        steps = 15,
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("不匹配时跳过本步（关闭则停止作业）")
+        Switch(
+            checked = step.colorSkipOnMismatch,
+            onCheckedChange = { checked -> onChange(step.copy(colorSkipOnMismatch = checked)) },
+        )
+    }
+    status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    var captureReady by remember { mutableStateOf(ScreenCapture.isReady()) }
+    var captureNote by remember { mutableStateOf<String?>(null) }
+    val captureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            if (context.canDrawOverlay()) FloatRunService.showBall(context)
+            val ok = ScreenCapture.start(context, result.resultCode, result.data!!)
+            captureReady = ok
+            captureNote = if (ok) "已允许读取画面，可在编辑页取色" else "读取画面没有打开"
+        } else {
+            captureNote = "没有允许读取画面"
+        }
+    }
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("设置") },
@@ -456,6 +612,21 @@ fun SettingsScreen(onBack: () -> Unit) {
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }) { Text("打开辅助功能设置") }
             }
+            Text(if (captureReady) "已允许读取画面（颜色条件）" else "尚未允许读取画面")
+            Text("颜色条件需要系统录屏授权，只在本机比对像素，不上网。进程被杀后需重新允许。")
+            if (!captureReady) {
+                Button(onClick = {
+                    val mgr = context.getSystemService(MediaProjectionManager::class.java)
+                    captureLauncher.launch(mgr.createScreenCaptureIntent())
+                }) { Text("允许读取画面") }
+            } else {
+                TextButton(onClick = {
+                    ScreenCapture.stop()
+                    captureReady = false
+                    captureNote = "已关闭读取画面"
+                }) { Text("关闭读取画面") }
+            }
+            captureNote?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             Text("从最近任务划掉浮序会关掉圆点和正在进行的点击。辅助功能保持开启，重新打开就能继续用。")
             Text("如果在系统里强制停止浮序，或手机管家把浮序强行清掉，手机会关掉辅助功能。这是系统限制，浮序不能自己打开，需要再到这里开一次。")
             val power = context.getSystemService(PowerManager::class.java)
@@ -471,6 +642,46 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }) { Text("允许后台运行") }
             }
             Text(stringResource(R.string.boundary))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RunsScreen(onBack: () -> Unit) {
+    val vm: RunsViewModel = viewModel()
+    val runs by vm.runs.collectAsState()
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text("运行记录") },
+            navigationIcon = { TextButton(onClick = onBack) { Text("返回") } },
+            actions = {
+                if (runs.isNotEmpty()) {
+                    TextButton(onClick = { vm.clear() }) { Text("清空") }
+                }
+            },
+        )
+    }) { padding ->
+        if (runs.isEmpty()) {
+            Text(
+                "还没有运行记录。跑完一份作业后会出现在这里。",
+                Modifier.padding(padding).padding(16.dp),
+            )
+        } else {
+            LazyColumn(
+                Modifier.padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(runs, key = { it.id }) { run ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(run.jobName, style = MaterialTheme.typography.titleMedium)
+                            Text("${formatTime(run.startedAt)} → ${formatTime(run.endedAt)}")
+                            Text("${run.stopReason.label()} · 点击 ${run.clicks} 次")
+                        }
+                    }
+                }
+            }
         }
     }
 }

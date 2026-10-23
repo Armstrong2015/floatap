@@ -10,7 +10,7 @@
 [![APK](https://img.shields.io/github/actions/workflow/status/Armstrong2015/floatap/build-apk.yml?style=flat-square&label=APK)](https://github.com/Armstrong2015/floatap/actions)
 [![网络](https://img.shields.io/badge/网络-不申请-6e7781?style=flat-square)](docs/02-产品需求分析.md)
 
-安卓工程在 [`android`](android)，Windows 工程在 [`windows`](windows)。安卓 2.1.0 支持多步顺序循环与定时开始/结束；Windows 正式版 1.0.5 共用同一套 `format: 1` 作业 JSON。颜色条件和画面匹配留到后面的版本。
+安卓工程在 [`android`](android)，Windows 工程在 [`windows`](windows)。安卓正式版 2.1.0 支持多步与定时；2.2.0（M3）增加导入导出、运行记录与颜色条件。Windows 正式版 1.0.5 共用同一套 `format: 1` 作业 JSON。画面匹配留到 M4。
 
 </div>
 
@@ -50,6 +50,7 @@ flowchart LR
 | 06 | [2.0.0 测试报告](docs/06-v2.0.0-测试报告.md) | 单元测试、模拟器与实机确认 |
 | 07 | [Windows 桌面端设计](docs/07-windows-桌面端设计.md) | M5 点击、选点、存储 |
 | 08 | [2.1.0 定时开始](docs/08-v2.1.0-定时开始.md) | 开始/结束时刻 |
+| 09 | [2.2.0 M3 设计](docs/09-v2.2.0-M3设计.md) | 导入导出、记录、颜色 |
 
 ## 一次作业怎么跑
 
@@ -77,14 +78,13 @@ flowchart LR
   M2 --> M5["M5 Windows<br/>1.0.0"]
   M2 --> M2b["定时开始<br/>2.1.0"]
   M5 --> M3["M3 颜色条件"]
-  M2b --> M3
+  M2b --> M3["M3 颜色与记录<br/>2.2.0"]
   M3 --> M4["M4 画面匹配"]
 
   classDef done fill:#1f6feb,stroke:#1f6feb,color:#ffffff
   classDef next fill:#9a6700,stroke:#9a6700,color:#ffffff
   classDef later fill:#6e7781,stroke:#6e7781,color:#ffffff
-  class M0,M1,M2,M2b,M5 done
-  class M3 next
+  class M0,M1,M2,M2b,M3,M5 done
   class M4 later
 ```
 
@@ -95,7 +95,7 @@ flowchart LR
 | M2 | 多点顺序循环、每步等待、循环次数（安卓 2.0.0） |
 | M5 | Windows 桌面端，同一份 format:1 JSON（windows 1.0.5） |
 | 定时开始 | 开始时刻、结束时刻（安卓 2.1.0） |
-| M3 | 导入导出、运行记录、像素颜色条件 |
+| M3 | 导入导出、运行记录、像素颜色条件（安卓 2.2.0） |
 | M4 | 局部画面匹配，以及如果 / 否则 |
 
 ## 运行时各管一段

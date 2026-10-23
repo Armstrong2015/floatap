@@ -37,6 +37,7 @@ fun FloatAppRoot(startOnGuide: Boolean) {
                 onCreate = { nav.navigate("edit/0") },
                 onEdit = { nav.navigate("edit/$it") },
                 onSettings = { nav.navigate("settings") },
+                onRuns = { nav.navigate("runs") },
             )
         }
         composable("edit/{id}") { entry ->
@@ -45,6 +46,9 @@ fun FloatAppRoot(startOnGuide: Boolean) {
         }
         composable("settings") {
             SettingsScreen(onBack = { nav.popBackStack() })
+        }
+        composable("runs") {
+            RunsScreen(onBack = { nav.popBackStack() })
         }
     }
 }

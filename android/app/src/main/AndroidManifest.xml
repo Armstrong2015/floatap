@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -31,10 +32,10 @@
             android:name=".engine.FloatRunService"
             android:exported="false"
             android:stopWithTask="true"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse|mediaProjection">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="按用户标定的坐标和间隔派发点击，并保持可停止的悬浮球。" />
+                android:value="按用户标定的坐标和间隔派发点击，并保持可停止的悬浮球；颜色条件时读取屏幕像素。" />
         </service>
 
         <!-- exported is required so the system can bind this service on Android 12+. -->

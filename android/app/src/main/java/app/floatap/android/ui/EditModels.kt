@@ -10,6 +10,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import app.floatap.android.FloatApp
 import app.floatap.android.Prefs
+import app.floatap.android.domain.ColorCondition
+import app.floatap.android.domain.ColorMismatchAction
 import app.floatap.android.domain.Job
 import app.floatap.android.domain.JobDraft
 import app.floatap.android.domain.Step
@@ -31,6 +33,10 @@ data class StepUi(
     val intervalText: String = "500",
     val randomInterval: Boolean = false,
     val intervalMaxText: String = "",
+    val useColor: Boolean = false,
+    val colorArgb: Int? = null,
+    val colorTolerance: Int = 32,
+    val colorSkipOnMismatch: Boolean = false,
 )
 
 data class EditUi(
@@ -59,6 +65,7 @@ private fun minutesToHourMinute(minutes: Int): Pair<String, String> {
 
 private fun Step.toUi(): StepUi {
     val ranged = waitMaxMs > waitMinMs
+    val c = color
     return StepUi(
         name = name,
         x = x,
@@ -69,6 +76,10 @@ private fun Step.toUi(): StepUi {
         intervalText = waitMinMs.toString(),
         randomInterval = ranged,
         intervalMaxText = if (ranged) waitMaxMs.toString() else "",
+        useColor = c != null,
+        colorArgb = c?.sampleArgb,
+        colorTolerance = c?.tolerance ?: 32,
+        colorSkipOnMismatch = c?.onMismatch == ColorMismatchAction.SKIP,
     )
 }
 
@@ -186,6 +197,10 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
     fun save(allowMissingPoint: Boolean = false, onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch {
             val ui = state
+            if (!allowMissingPoint && ui.steps.any { it.useColor && it.colorArgb == null }) {
+                state = ui.copy(error = "打开了颜色条件的步骤，请先取色", warning = null)
+                return@launch
+            }
             val startMin = if (ui.useScheduleStart) {
                 parseHourMinute(ui.startHourText, ui.startMinuteText) ?: -1
             } else {
@@ -239,6 +254,21 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                     name = ui.name.trim(),
                     steps = ui.steps.mapIndexed { index, step ->
                         val timing = checked.steps[index]
+                        val color = if (step.useColor && step.colorArgb != null && step.x >= 0 && step.y >= 0) {
+                            ColorCondition(
+                                x = step.x,
+                                y = step.y,
+                                sampleArgb = step.colorArgb,
+                                tolerance = step.colorTolerance.coerceIn(0, 255),
+                                onMismatch = if (step.colorSkipOnMismatch) {
+                                    ColorMismatchAction.SKIP
+                                } else {
+                                    ColorMismatchAction.STOP
+                                },
+                            )
+                        } else {
+                            null
+                        }
                         Step(
                             order = index,
                             name = timing.name,
@@ -250,6 +280,7 @@ class EditViewModel(app: Application, private val initialId: Long) : AndroidView
                             waitMode = if (timing.intervalMaxMs > timing.intervalMs) WaitMode.RANGE else WaitMode.FIXED,
                             waitMinMs = timing.intervalMs,
                             waitMaxMs = timing.intervalMaxMs,
+                            color = color,
                         )
                     },
                     durationMs = checked.durationMs,
@@ -328,5 +359,53 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearMessage() {
         message = null
+    }
+
+    suspend fun exportAllJson(): String {
+        val jobs = repository.allJobs()
+        if (jobs.isEmpty()) error("还没有作业可导出")
+        val array = org.json.JSONArray()
+        for (job in jobs) {
+            array.put(org.json.JSONObject(app.floatap.android.domain.jobToJson(job)))
+        }
+        val root = org.json.JSONObject()
+        root.put("format", 1)
+        root.put("jobs", array)
+        return root.toString(2)
+    }
+
+    suspend fun exportJobJson(id: Long): String {
+        val job = repository.get(id) ?: error("找不到这份作业")
+        return app.floatap.android.domain.jobToJson(job)
+    }
+
+    suspend fun importJson(text: String): Int {
+        val trimmed = text.trim()
+        if (trimmed.startsWith("{")) {
+            val obj = org.json.JSONObject(trimmed)
+            if (obj.has("jobs")) {
+                val arr = obj.getJSONArray("jobs")
+                var count = 0
+                for (i in 0 until arr.length()) {
+                    val job = app.floatap.android.domain.jobFromJson(arr.getJSONObject(i).toString())
+                    repository.importJob(job)
+                    count += 1
+                }
+                return count
+            }
+            val job = app.floatap.android.domain.jobFromJson(trimmed)
+            repository.importJob(job)
+            return 1
+        }
+        throw app.floatap.android.domain.JobJsonException("不是有效的作业 JSON")
+    }
+}
+
+class RunsViewModel(app: Application) : AndroidViewModel(app) {
+    private val repository = (app as FloatApp).repository
+    val runs = repository.observeRuns().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun clear() {
+        viewModelScope.launch { repository.clearRuns() }
     }
 }

@@ -10,6 +10,7 @@ class FloatApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        repository = JobRepository(FloatDatabase.create(this).jobs())
+        val db = FloatDatabase.create(this)
+        repository = JobRepository(db.jobs(), db.runs())
     }
 }

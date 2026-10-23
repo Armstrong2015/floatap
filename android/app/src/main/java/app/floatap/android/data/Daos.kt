@@ -40,4 +40,28 @@ interface JobDao {
 
     @Query("SELECT COUNT(*) FROM jobs")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM jobs ORDER BY updatedAt DESC")
+    suspend fun allJobs(): List<JobEntity>
+}
+
+@Dao
+interface RunDao {
+    @Query("SELECT * FROM runs ORDER BY endedAt DESC LIMIT :limit")
+    fun observe(limit: Int = 100): Flow<List<RunEntity>>
+
+    @Insert
+    suspend fun insert(run: RunEntity): Long
+
+    @Query(
+        """
+        DELETE FROM runs WHERE id NOT IN (
+            SELECT id FROM runs ORDER BY endedAt DESC LIMIT :keep
+        )
+        """,
+    )
+    suspend fun trim(keep: Int = 100)
+
+    @Query("DELETE FROM runs")
+    suspend fun clear()
 }

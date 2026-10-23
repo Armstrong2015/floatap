@@ -44,6 +44,22 @@ data class StepEntity(
     val waitMode: String,
     val waitMinMs: Long,
     val waitMaxMs: Long,
+    val colorX: Int? = null,
+    val colorY: Int? = null,
+    val colorArgb: Int? = null,
+    val colorTolerance: Int? = null,
+    val colorOnMismatch: String? = null,
+)
+
+@Entity(tableName = "runs")
+data class RunEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val jobId: Long?,
+    val jobName: String,
+    val startedAt: Long,
+    val endedAt: Long,
+    val stopReason: String,
+    val clicks: Int,
 )
 
 data class JobSummaryRow(
